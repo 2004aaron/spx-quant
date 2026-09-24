@@ -1,0 +1,49 @@
+# Every parameter below must have a matching [provenance."section.key"] entry with a
+# tag from {validated, unvalidated, "unvalidated: tested, not supported",
+# "unvalidated: partially supported"} and a source. Loading fails otherwise (US-12).
+
+[regime]
+contango_slope = 0.05
+backwardation_slope = -0.01
+
+[vol_buckets]
+crushed_below = 13.0
+low_below = 16.0
+normal_below = 20.0
+elevated_below = 28.0
+
+[strangle]
+target_delta = 0.16
+target_dte = 45
+dte_min = 30
+dte_max = 60
+profit_target = 0.50
+
+[liquidity]
+min_open_interest = 50
+min_volume = 25
+max_spread_pct = 0.25
+min_mid = 0.30
+
+[feed]
+stale_after_minutes = 30
+timeout_seconds = 30
+
+[provenance]
+"regime.contango_slope" = { tag = "unvalidated", source = "mentor framework, Aug 2026 call" }
+"regime.backwardation_slope" = { tag = "unvalidated: tested, not supported", source = "backtest-findings Tier A table 2 (2026-09-07): backwardation stand-down contradicted, p=0.004 PUTD" }
+"vol_buckets.crushed_below" = { tag = "unvalidated: partially supported", source = "backtest-findings Tier A table 4: right sign, not significant" }
+"vol_buckets.low_below" = { tag = "unvalidated", source = "mentor framework" }
+"vol_buckets.normal_below" = { tag = "unvalidated", source = "mentor framework" }
+"vol_buckets.elevated_below" = { tag = "unvalidated", source = "mentor framework" }
+"strangle.target_delta" = { tag = "unvalidated: partially supported", source = "backtest-findings Tier B part A: 10-delta better risk-adjusted on SPY 2019-2026" }
+"strangle.target_dte" = { tag = "validated", source = "backtest-findings Tier B part A: 45 DTE 32.0% return on credit vs 28.9% (30) and 27.0% (60)" }
+"strangle.dte_min" = { tag = "unvalidated", source = "mentor framework, 30-60 DTE window" }
+"strangle.dte_max" = { tag = "unvalidated", source = "mentor framework, 30-60 DTE window" }
+"strangle.profit_target" = { tag = "validated", source = "backtest-findings Tier B part B: 50% target keeps 84% of return, 5th pct loss -1816 to -634" }
+"liquidity.min_open_interest" = { tag = "unvalidated", source = "engine-build-notes: prefilter before delta selection" }
+"liquidity.min_volume" = { tag = "unvalidated", source = "engine-build-notes: accept OI or volume, delayed feed carries prior-session OI" }
+"liquidity.max_spread_pct" = { tag = "unvalidated", source = "engine-build-notes" }
+"liquidity.min_mid" = { tag = "unvalidated", source = "engine-build-notes" }
+"feed.stale_after_minutes" = { tag = "validated", source = "proposal QR-1: Cboe feed is ~15 min delayed, 30 min means a failed refresh" }
+"feed.timeout_seconds" = { tag = "unvalidated", source = "operational default" }

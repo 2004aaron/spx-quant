@@ -1,0 +1,18 @@
+[project]
+name = "spx-quant"
+version = "0.3.0"
+description = "Regime-aware advisory engine for SPX/XSP option sellers. Advises, never executes."
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Aaron Wu" }]
+dependencies = []
+
+[project.scripts]
+spx-quant = "spx_quant.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["spx_quant*"]
