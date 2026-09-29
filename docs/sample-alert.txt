@@ -1,0 +1,50 @@
+SPX QUANT | PROPOSAL | 20260928-1325-ec42b9
+Output: 2026-09-28 13:25 PT
+Data as of: 2026-09-28 13:14 PT (10 min old, replay cboe-2026-09-28-close.json.gz)
+
+MARKET
+  SPX 7,683.69   VIX9D 14.39   VIX 16.07   VIX3M 18.23   VIX6M 20.25
+  Regime: contango / normal (slope +0.134)
+
+PROPOSAL: naked put on XSP, expires 2026-11-13 (46 DTE)
+  SELL 5 XSP261113P00725000  put 725  bid 4.24  ask 4.49  mid 4.37  IV 18.4%  delta -0.161
+  Credit: $2,182 total (5 x $436.50 per lot at mid; natural $424.00, far $449.00)
+  Buying power: $11,204.20 of $12,000.00 cap (5 x $2,240.84, portfolio margin)
+  Delta:theta: 1:7.4 within the 1:2 limit (delta +1.61 SPX-eq sh, theta $11.84/day per lot)
+
+RISK (model estimates for all 5 lots)
+  Probability of profit: 91.0%
+  Expected value: $557
+  Expected annual return on buying power: 39.4%
+  Worst case (CVaR 1%, average of the worst 1% of outcomes): -$48,148 = 32% of net liquidation
+  CVaR 5%: -$25,432
+  Max profit: $2,182
+  Max loss: unlimited (naked short option)
+  Breakevens at expiration: 720.63
+  Stress, instant index move: -20% -$51,218 | -10% -$16,359 | -5% -$5,304 | +5% +$1,719 | +10% +$2,097
+  Implied crash rate: 0.316 per year (the crash frequency this premium pays for, before any volatility risk premium)
+
+ASSUMPTIONS
+  Model estimates, held to expiration, settled at intrinsic value. Index lognormal at realized
+  vol 12.5% (ATM IV 13.9% less a 10% volatility risk premium), drift 4.0%/yr, plus a -15% crash
+  arriving 0.25 times per year. Input tags: vrp_haircut unvalidated, crash_prob_annual
+  unvalidated, crash_size unvalidated, rate unvalidated.
+
+RANKING (expected annual return on buying power; best first)
+  1. naked put XSP 11/13 -725P x5: 39.4%/yr on BP, EV $557, POP 91%, worst case -$48,148
+  2. strangle XSP 11/13 -805C -725P x6: 24.0%/yr on BP, EV $357, POP 80%, worst case -$56,639
+  Ranked first because it has the highest expected annual return on buying power (39.4%) of 2 candidates that fit.
+
+CONSIDERED, NOT PROPOSED
+  - strangle SPX 11/13 -8050C -7250P: needs $19,700.09 of buying power per lot; cap is $12,000.00 (8% of $150,000, portfolio)
+  - naked put SPX 11/13 -7250P: needs $22,405.75 of buying power per lot; cap is $12,000.00 (8% of $150,000, portfolio)
+  - iron condor SPX 11/13 -8050C +8100C +7200P -7250P: expected value -$160 is not positive under the stated assumptions
+  - put vertical SPX 11/13 +7375P -7425P: delta:theta 1:1.0 breaks the 1:2 limit (delta +2.75 SPX-eq sh, theta $2.86/day per lot)
+  - iron condor XSP 11/13 -805C +810C +720P -725P: expected value -$301 is not positive under the stated assumptions
+  - put vertical XSP 11/13 +740P -745P: delta:theta 1:0.7 breaks the 1:2 limit (delta +0.29 SPX-eq sh, theta $0.20/day per lot)
+
+NOTES
+  - SPX could not be sized for this account; using XSP
+
+Parameters: 45 unvalidated, 2 unvalidated: partially supported, 1 unvalidated: tested, not supported, 3 validated
+Model estimates with tagged assumptions, not investment advice. The engine never places orders.

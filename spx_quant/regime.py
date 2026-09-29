@@ -1,19 +1,23 @@
-"""VIX term-structure regime classifier (US-02).
+"""VIX term-structure regime classifier (US-02) and stand-down gate (US-04).
 
 Regime = (term-structure state, volatility bucket).
   state  : contango | flat | backwardation, from slope = (VIX3M - VIX) / VIX
   bucket : crushed | low | normal | elevated | panic, from spot VIX
-A missing input yields state "unknown" and never a guess (US-02-AC3).
+VIX and VIX3M are required; VIX9D and VIX6M are shown when present. A missing
+required point yields "unknown" and names the point, never a guess (US-02-AC3).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 
+from . import clock
 from .params import Params, load_params
 
 STATES = ("contango", "flat", "backwardation", "unknown")
 BUCKETS = ("crushed", "low", "normal", "elevated", "panic", "unknown")
-REQUIRED = ("vix9d", "vix", "vix3m")
+REQUIRED = ("vix", "vix3m")
+SHOWN = ("vix9d", "vix", "vix3m", "vix6m")
 
 
 @dataclass(frozen=True)
@@ -23,23 +27,30 @@ class Regime:
     slope: float | None
     inputs: dict[str, float | None] = field(default_factory=dict)
     reason: str = ""
+    asof: datetime | None = None
 
     @property
     def known(self) -> bool:
         return self.state != "unknown" and self.bucket != "unknown"
 
+    def as_dict(self) -> dict:
+        return {"state": self.state, "bucket": self.bucket, "slope": self.slope, "inputs": self.inputs,
+                "reason": self.reason, "asof": self.asof.isoformat() if self.asof else None}
+
     def __str__(self) -> str:
+        stamp = f"  asof {clock.fmt(self.asof)}" if self.asof else ""
         if not self.known:
-            return f"regime: unknown ({self.reason})"
+            return f"regime: unknown ({self.reason}){stamp}"
         vals = " ".join(f"{k.upper()}={v:.2f}" for k, v in self.inputs.items() if v is not None)
-        return f"regime: {self.state} / {self.bucket}  slope={self.slope:+.3f}  {vals}"
+        return f"regime: {self.state} / {self.bucket}  slope={self.slope:+.3f}  {vals}{stamp}"
 
 
-def classify(curve: dict[str, float | None], params: Params | None = None) -> Regime:
+def classify(curve: dict[str, float | None], params: Params | None = None, asof: datetime | None = None) -> Regime:
     p = params or load_params()
+    shown = {k: curve.get(k) for k in SHOWN}
     missing = [k for k in REQUIRED if curve.get(k) is None]
     if missing:
-        return Regime("unknown", "unknown", None, dict(curve), f"{', '.join(k.upper() for k in missing)} missing")
+        return Regime("unknown", "unknown", None, shown, f"{', '.join(k.upper() for k in missing)} missing", asof)
     vix, vix3m = float(curve["vix"]), float(curve["vix3m"])
     slope = (vix3m - vix) / vix
     r = p.regime
@@ -60,23 +71,26 @@ def classify(curve: dict[str, float | None], params: Params | None = None) -> Re
         bucket = "elevated"
     else:
         bucket = "panic"
-    return Regime(state, bucket, round(slope, 4), {k: curve.get(k) for k in ("vix9d", "vix", "vix3m", "vix6m")})
+    return Regime(state, bucket, round(slope, 4), shown, "", asof)
 
 
 def gate(regime: Regime, params: Params | None = None) -> tuple[bool, list[str]]:
-    """Alpha default: stand down in backwardation and in crushed/panic buckets (US-04).
+    """Alpha default: stand down in backwardation and outside the volatility floor/ceiling.
 
     The historical evidence in docs/backtest-findings.md contradicts the backwardation
-    rule; it stays as the Alpha default and US-13 is the planned replacement.
+    rule; it stays as the Alpha default and is tagged "tested, not supported".
     """
     p = params or load_params()
-    reasons: list[str] = []
     if not regime.known:
-        return False, [f"regime unknown: {regime.reason}"]
+        return False, [f"regime could not be identified: {regime.reason}"]
+    reasons: list[str] = []
+    vix = regime.inputs["vix"]
+    b = p.vol_buckets
     if regime.state == "backwardation":
-        reasons.append(f"VIX term structure inverted: slope {regime.slope:+.3f}")
+        reasons.append(f"VIX term structure inverted (backwardation): slope {regime.slope:+.3f}")
     if regime.bucket == "crushed":
-        reasons.append(f"VIX {regime.inputs['vix']:.1f} below floor {p.vol_buckets['crushed_below']:.1f}: premium too thin for the tail")
+        reasons.append(f"VIX {vix:.1f} below the {b['crushed_below']:g} floor: premium too thin to be worth the risk")
     if regime.bucket == "panic":
-        reasons.append(f"VIX {regime.inputs['vix']:.1f} in panic bucket: sample too small to support any rule")
+        where = "above" if vix > b["elevated_below"] else "at"
+        reasons.append(f"VIX {vix:.1f} {where} the {b['elevated_below']:g} ceiling: panic-level volatility")
     return not reasons, reasons

@@ -1,6 +1,6 @@
 [project]
 name = "spx-quant"
-version = "0.3.0"
+version = "0.4.0"
 description = "Regime-aware advisory engine for SPX/XSP option sellers. Advises, never executes."
 requires-python = ">=3.11"
 license = { file = "LICENSE" }

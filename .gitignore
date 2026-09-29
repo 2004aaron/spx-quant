@@ -6,3 +6,7 @@ __pycache__/
 profile.json
 .spx-quant/
 data/cache/
+*.db
+*.db-journal
+.env
+recordings/
