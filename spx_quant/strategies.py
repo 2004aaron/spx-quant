@@ -90,10 +90,11 @@ class Position:
         t = years_to(self.root, self.exp, now)
         return round(sum(l.qty * bs(spot, l.strike, t, l.iv, l.right, rate).theta for l in self.legs) * MULTIPLIER, 2)
 
-    def value(self, spot: float, now: datetime, rate: float) -> float:
-        """Model value per lot (negative for a net short), each leg at its own IV."""
+    def value(self, spot: float, now: datetime, rate: float, iv_shift: float = 0.0) -> float:
+        """Model value per lot (negative for a net short), each leg at its own IV plus iv_shift."""
         t = years_to(self.root, self.exp, now)
-        return sum(l.qty * bs(spot, l.strike, t, l.iv, l.right, rate).price for l in self.legs) * MULTIPLIER
+        return sum(l.qty * bs(spot, l.strike, t, max(l.iv + iv_shift, 1e-4), l.right, rate).price
+                   for l in self.legs) * MULTIPLIER
 
     def payoff(self, s_t: float) -> float:
         """P/L per lot if held to expiration and settled at s_t."""

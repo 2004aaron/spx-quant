@@ -13,7 +13,7 @@ SPX_QUANT_SMTP_PASSWORD=app-password-here
 # pilot user 1
 30 10 * * 1-5  cd $HOME/spx-quant && python3.11 -m spx_quant --profile $HOME/.spx-quant/aaron.json --db $HOME/.spx-quant/aaron.db scan --slot 10:30 >> $HOME/.spx-quant/cron.log 2>&1
 25 13 * * 1-5  cd $HOME/spx-quant && python3.11 -m spx_quant --profile $HOME/.spx-quant/aaron.json --db $HOME/.spx-quant/aaron.db scan --slot 13:25 >> $HOME/.spx-quant/cron.log 2>&1
-35 13 * * 1-5  cd $HOME/spx-quant && python3.11 -m spx_quant --profile $HOME/.spx-quant/aaron.json --db $HOME/.spx-quant/aaron.db mark >> $HOME/.spx-quant/cron.log 2>&1
+45 13 * * 1-5  cd $HOME/spx-quant && python3.11 -m spx_quant --profile $HOME/.spx-quant/aaron.json --db $HOME/.spx-quant/aaron.db mark >> $HOME/.spx-quant/cron.log 2>&1
 
 # pilot user 2: same three lines with its own profile and database
 # 30 10 * * 1-5  cd $HOME/spx-quant && python3.11 -m spx_quant --profile $HOME/.spx-quant/mentor.json --db $HOME/.spx-quant/mentor.db scan --slot 10:30 >> $HOME/.spx-quant/cron.log 2>&1

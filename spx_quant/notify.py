@@ -111,12 +111,9 @@ def deliver(conn, alert: dict, finished_ts: datetime, profile: Profile, params, 
         store.insert(conn, "delivery", alert_id=aid, channel="none", attempt=0, status="no_channel", error=None)
         return "no_channel"
 
-    if store.last_delivered_fingerprint(conn) == alert["fingerprint"]:
-        if n.get("repeat_policy", "suppress") == "suppress":
-            store.insert(conn, "delivery", alert_id=aid, channel=channel.name, attempt=0, status="suppressed_repeat", error=None)
-            return "suppressed_repeat"
-        subject = subject.replace("] ", "] UNCHANGED: ", 1)
-        body = "No change since the last alert. Full detail below.\n\n" + body
+    if n.get("repeat_policy", "brief") == "suppress" and store.last_delivered_fingerprint(conn) == alert["fingerprint"]:
+        store.insert(conn, "delivery", alert_id=aid, channel=channel.name, attempt=0, status="suppressed_repeat", error=None)
+        return "suppressed_repeat"
 
     attempts = int(n.get("max_attempts", 3))
     last_err = ""

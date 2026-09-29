@@ -1,4 +1,4 @@
-SPX QUANT | PROPOSAL | 20260928-1325-ec42b9
+SPX QUANT | PROPOSAL | 2026-09-28-2026-11-13
 Output: 2026-09-28 13:25 PT
 Data as of: 2026-09-28 13:14 PT (10 min old, replay cboe-2026-09-28-close.json.gz)
 
@@ -16,8 +16,9 @@ RISK (model estimates for all 5 lots)
   Probability of profit: 91.0%
   Expected value: $557
   Expected annual return on buying power: 39.4%
-  Worst case (CVaR 1%, average of the worst 1% of outcomes): -$48,148 = 32% of net liquidation
-  CVaR 5%: -$25,432
+  Worst case (stress: index -10%, volatility +10 points): -$20,728 = 14% of net liquidation
+  Average of the worst 5% (CVaR 5%): -$25,432
+  Average of the worst 1% (CVaR 1%): -$48,148
   Max profit: $2,182
   Max loss: unlimited (naked short option)
   Breakevens at expiration: 720.63
@@ -27,12 +28,13 @@ RISK (model estimates for all 5 lots)
 ASSUMPTIONS
   Model estimates, held to expiration, settled at intrinsic value. Index lognormal at realized
   vol 12.5% (ATM IV 13.9% less a 10% volatility risk premium), drift 4.0%/yr, plus a -15% crash
-  arriving 0.25 times per year. Input tags: vrp_haircut unvalidated, crash_prob_annual
-  unvalidated, crash_size unvalidated, rate unvalidated.
+  arriving 0.25 times per year. Worst case is a stress test: index -10% at once with volatility
+  up 10 points. Input tags: vrp_haircut unvalidated, crash_prob_annual unvalidated, crash_size
+  unvalidated, rate unvalidated, worst_case_move unvalidated, worst_case_vol_points unvalidated.
 
 RANKING (expected annual return on buying power; best first)
-  1. naked put XSP 11/13 -725P x5: 39.4%/yr on BP, EV $557, POP 91%, worst case -$48,148
-  2. strangle XSP 11/13 -805C -725P x6: 24.0%/yr on BP, EV $357, POP 80%, worst case -$56,639
+  1. naked put XSP 11/13 -725P x5: 39.4%/yr on BP, EV $557, POP 91%, worst case -$20,728
+  2. strangle XSP 11/13 -805C -725P x6: 24.0%/yr on BP, EV $357, POP 80%, worst case -$23,608
   Ranked first because it has the highest expected annual return on buying power (39.4%) of 2 candidates that fit.
 
 CONSIDERED, NOT PROPOSED
@@ -46,5 +48,5 @@ CONSIDERED, NOT PROPOSED
 NOTES
   - SPX could not be sized for this account; using XSP
 
-Parameters: 45 unvalidated, 2 unvalidated: partially supported, 1 unvalidated: tested, not supported, 3 validated
+Parameters: 47 unvalidated, 2 unvalidated: partially supported, 1 unvalidated: tested, not supported, 3 validated
 Model estimates with tagged assumptions, not investment advice. The engine never places orders.

@@ -20,9 +20,9 @@ has a test; the map is in [`docs/story-map.md`](docs/story-map.md).
 | US-02 regime | contango / flat / backwardation and a volatility bucket, with the VIX values and a timestamp; names a missing point | `regime.py` |
 | US-03 sized proposal | four builders (strangle, naked put, put vertical, iron condor) on SPX, falling back to XSP when SPX cannot fit; Reg-T and portfolio margin; inclusive cap; ranked by expected annual return on buying power | `strategies.py`, `margin.py`, `sizing.py`, `engine.py` |
 | US-04 stand-down | floor 13, ceiling 28, backwardation; reasons logged | `regime.py`, `engine.py` |
-| US-05 risk block | probability of profit, expected value, CVaR 5% / 1% (worst case), breakevens, stress rows, implied crash rate, stated assumptions; refuses to default a missing assumption | `analytics.py` |
+| US-05 risk block | probability of profit, expected value, worst case (index -10%, volatility +10 points), CVaR 5% / 1%, breakevens, stress rows, implied crash rate, stated assumptions; refuses to default a missing assumption | `analytics.py` |
 | US-06 data check | one fetch per scan, checked for shape, size and quote age before use | `data/cboe.py` |
-| US-07 notifications | email (SMTP/TLS) or Discord webhook, retries, no repeat for unchanged conditions, failures recorded | `notify.py` |
+| US-07 notifications | email (SMTP/TLS) or Discord webhook, retries, a short NO CHANGE note instead of repeating an unchanged alert, failures recorded | `notify.py`, `alert.py` |
 | US-08 log | SQLite, six append-only tables (scan, alert, delivery, mark, feedback, event), query by date | `store.py`, `pipeline.py` |
 | US-09 daily marks | values every logged proposal at the close as if it had been opened; settles at expiration | `mark.py` |
 | KR scripts | A-KR1, A-KR2 (with planted bad rows), A-KR3 (24 cases), B-KR1 to B-KR3 | `kr.py` |
@@ -38,7 +38,7 @@ Python 3.11 or newer. No third-party packages, no install step.
 ```bash
 git clone https://github.com/2004aaron/spx-quant.git
 cd spx-quant
-python -m unittest discover -s tests -t . -v        # 133 tests, about 15 seconds
+python -m unittest discover -s tests -t . -v        # 135 tests, about 15 seconds
 
 python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 --dt-limit 2
 python -m spx_quant profile show

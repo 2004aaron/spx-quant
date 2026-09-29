@@ -8,7 +8,7 @@ from unittest import mock
 from spx_quant import notify, pipeline, store
 from spx_quant.profile import validate
 from spx_quant.synthetic import SyntheticSource
-from tests.helpers import PARAMS, memdb
+from tests.helpers import PARAMS, memdb, replay
 
 
 class FakeChannel:
@@ -45,15 +45,18 @@ class DeliveryTest(unittest.TestCase):
         self.assertLessEqual(d["delivered_ts"], (store._enc(rec.result.now + timedelta(minutes=20))))
         self.assertGreaterEqual(d["delivered_ts"], s["finished_ts"])
 
-    def test_us07_ac2_same_conditions_same_proposal_not_resent(self):
+    def test_us07_ac2_unchanged_scan_sends_a_short_no_change_note_not_the_full_alert(self):
         conn, ch = memdb(), FakeChannel()
-        scan(conn, ch)
+        first = scan(conn, ch)
         second = scan(conn, ch)
-        self.assertEqual(second.delivery, "suppressed_repeat")
-        self.assertEqual(len(ch.sent), 1)
-        third = scan(conn, ch, vix=12.0)   # conditions changed
-        self.assertEqual(third.delivery, "delivered")
-        self.assertEqual(len(ch.sent), 2)
+        self.assertEqual(second.delivery, "delivered")
+        subject, body = ch.sent[1]
+        self.assertIn("NO CHANGE: still stand down", subject)
+        self.assertIn(f"NO CHANGE since {first.alert['alert_id']}", body)
+        self.assertEqual(second.alert["repeat_of"], first.alert["alert_id"])
+        self.assertEqual(second.alert["text"], body)   # the log holds exactly what was sent
+        third = scan(conn, ch, vix=12.0)   # conditions changed: full alert again
+        self.assertNotIn("NO CHANGE", ch.sent[2][0])
 
     def test_latency_is_measured_on_a_moving_clock(self):
         class Ticking(SyntheticSource):
@@ -73,14 +76,23 @@ class DeliveryTest(unittest.TestCase):
         self.assertIn("| 6.00 | no |", text)   # two ticks between scan completion and delivery
         self.assertFalse(ok)
 
-    def test_brief_policy_sends_an_unchanged_notice_instead(self):
+    def test_suppress_policy_sends_nothing_for_a_repeat(self):
         p = copy.deepcopy(PARAMS)
-        p.sections["notify"]["repeat_policy"] = "brief"
+        p.sections["notify"]["repeat_policy"] = "suppress"
         conn, ch = memdb(), FakeChannel()
         scan(conn, ch, params=p)
-        scan(conn, ch, params=p)
-        self.assertEqual(len(ch.sent), 2)
-        self.assertIn("UNCHANGED", ch.sent[1][0])
+        self.assertEqual(scan(conn, ch, params=p).delivery, "suppressed_repeat")
+        self.assertEqual(len(ch.sent), 1)
+
+    def test_no_change_note_for_a_proposal_keeps_the_legs_and_quotes(self):
+        conn, ch = memdb(), FakeChannel()
+        for _ in range(2):
+            pipeline.scan(conn, replay(), PROFILE, PARAMS, "13:25", channel=ch, sleep=lambda s: None)
+        subject, body = ch.sent[1]
+        self.assertIn("still stands", subject)
+        self.assertLess(len(body), len(ch.sent[0][1]) / 2)
+        for s in ("Data as of: ", "VIX3M 18.23", "bid 4.24", "ask 4.49", "worst case -$"):
+            self.assertIn(s, body)
 
     def test_us07_ac3_retried_then_delivered(self):
         conn, ch = memdb(), FakeChannel(fail_times=2)

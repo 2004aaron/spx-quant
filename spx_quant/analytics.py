@@ -21,6 +21,7 @@ from .params import Params, load_params
 from .strategies import Position, years_to
 
 REQUIRED = ("risk.vrp_haircut", "risk.crash_prob_annual", "risk.crash_size", "risk.rate")
+STRESS = ("risk.worst_case_move", "risk.worst_case_vol_points")
 
 
 @dataclass
@@ -28,7 +29,7 @@ class Risk:
     pop: float                  # probability, 0..1
     ev: float                   # dollars, all contracts
     cvar5: float                # dollars, average of the worst 5% of outcomes (negative = loss)
-    cvar1: float                # dollars, average of the worst 1%; this is the stated worst case
+    cvar1: float                # dollars, average of the worst 1% of outcomes
     breakevens: list[float]     # index levels at expiration
     max_profit: float           # dollars, credit at mid
     max_loss: float | None      # dollars, defined-risk structures only
@@ -36,10 +37,11 @@ class Risk:
     ann_return_bp: float        # percent: EV / buying power, annualized over DTE
     implied_crash_per_year: float | None
     assumptions: dict
+    worst_case_stress: float = 0.0  # dollars: instant index move plus a volatility jump (user flow screen 8)
 
     @property
     def worst_case(self) -> float:
-        return self.cvar1
+        return self.worst_case_stress
 
     def as_dict(self) -> dict:
         d = asdict(self)
@@ -117,6 +119,7 @@ def compute(pos: Position, contracts: int, bp_total: float, spot: float, sigma_a
             now: datetime, params: Params | None = None) -> Risk:
     p = params or load_params()
     vrp, lam, jump, rate = (p.need(*k.split(".")) for k in REQUIRED)
+    wc_move, wc_vol = (p.need(*k.split(".")) for k in STRESS)
     n = int(p.risk.get("grid_points", 2001))
     t = years_to(pos.root, pos.exp, now)
     sigma = sigma_atm * (1 - vrp)
@@ -129,19 +132,21 @@ def compute(pos: Position, contracts: int, bp_total: float, spot: float, sigma_a
     base = pos.value(spot, now, rate)
     stress = [(mv, round((pos.value(spot * (1 + mv), now, rate) - base) * k, 2)) for mv in p.risk.get("stress_moves", [])]
     max_loss = round((pos.width * 100 - pos.credit) * k, 2) if pos.defined_risk else None
+    worst = (pos.value(spot * (1 + wc_move), now, rate, wc_vol / 100) - base) * k
     ann = ev / bp_total * 365 / max(pos.dte, 1) * 100 if bp_total > 0 else 0.0
     assumptions = {
         "hold": "held to expiration, settled at intrinsic value",
         "atm_iv": round(sigma_atm, 4), "realized_vol": round(sigma, 4), "vrp_haircut": vrp,
         "crash_prob_annual": lam, "crash_size": jump, "rate": rate, "years_to_expiry": round(t, 4),
-        "tags": {k2: p.tag(k2) for k2 in REQUIRED},
+        "worst_case_move": wc_move, "worst_case_vol_points": wc_vol,
+        "tags": {k2: p.tag(k2) for k2 in REQUIRED + STRESS},
     }
     return Risk(
         pop=round(pop, 4), ev=round(ev, 2), cvar5=round(_cvar(outcomes, 0.05), 2), cvar1=round(_cvar(outcomes, 0.01), 2),
         breakevens=_breakevens(levels, per_lot), max_profit=round(pos.credit * k, 2), max_loss=max_loss,
         stress=stress, ann_return_bp=round(ann, 2),
         implied_crash_per_year=implied_crash(pos, spot, t, sigma_atm, jump, rate),
-        assumptions=assumptions,
+        assumptions=assumptions, worst_case_stress=round(worst, 2),
     )
 
 
@@ -149,4 +154,6 @@ def assumptions_text(a: dict) -> str:
     return (f"Model estimates, {a['hold']}. Index lognormal at realized vol {a['realized_vol']:.1%} "
             f"(ATM IV {a['atm_iv']:.1%} less a {a['vrp_haircut']:.0%} volatility risk premium), drift {a['rate']:.1%}/yr, "
             f"plus a {a['crash_size']:.0%} crash arriving {a['crash_prob_annual']:g} times per year. "
+            f"Worst case is a stress test: index {a['worst_case_move']:+.0%} at once with volatility up "
+            f"{a['worst_case_vol_points']:g} points. "
             f"Input tags: " + ", ".join(f"{k.split('.')[1]} {v}" for k, v in a["tags"].items()) + ".")

@@ -59,6 +59,8 @@ crash_prob_annual = 0.25
 crash_size = -0.15
 rate = 0.04
 min_pop = 0.60
+worst_case_move = -0.10
+worst_case_vol_points = 10.0
 stress_moves = [-0.20, -0.10, -0.05, 0.05, 0.10]
 grid_points = 2001
 
@@ -77,10 +79,10 @@ tickers = ["_SPX", "_XSP"]
 [schedule]
 slots = ["10:30", "13:25"]
 eod_slot = "13:25"
-mark_time = "13:35"
+mark_time = "13:45"
 
 [notify]
-repeat_policy = "suppress"
+repeat_policy = "brief"
 max_attempts = 3
 retry_wait_seconds = 5
 latency_target_minutes = 20
@@ -119,6 +121,8 @@ latency_target_minutes = 20
 "risk.crash_prob_annual" = { tag = "unvalidated", source = "engine-build-notes finding 5: post-1987 record roughly 0.15-0.5 per year" }
 "risk.crash_size" = { tag = "unvalidated", source = "placeholder: one-day gap size used for the crash branch" }
 "risk.rate" = { tag = "unvalidated", source = "operational default near the T-bill rate" }
+"risk.worst_case_move" = { tag = "unvalidated", source = "user flow diagram screen 8: worst case = index down 10%, volatility up 10 points" }
+"risk.worst_case_vol_points" = { tag = "unvalidated", source = "user flow diagram screen 8: worst case = index down 10%, volatility up 10 points" }
 "risk.min_pop" = { tag = "unvalidated", source = "proposal 2.4: stand down when the chance of losing exceeds a threshold" }
 "risk.stress_moves" = { tag = "unvalidated", source = "operational default stress grid" }
 "risk.grid_points" = { tag = "unvalidated", source = "numerical resolution of the terminal distribution" }
@@ -132,8 +136,8 @@ latency_target_minutes = 20
 "feed.tickers" = { tag = "unvalidated", source = "engine-build-notes finding 1: XSP is 1/10 SPX notional for accounts SPX cannot fit" }
 "schedule.slots" = { tag = "unvalidated", source = "proposal A-KR1: 10:30 PT scan and an end-of-day scan after the 13:15 PT SPX close" }
 "schedule.eod_slot" = { tag = "unvalidated", source = "proposal A-KR2: end-of-day proposals are checked against the next 10:30 scan" }
-"schedule.mark_time" = { tag = "unvalidated", source = "proposal 4.3: marking job after the close" }
-"notify.repeat_policy" = { tag = "unvalidated", source = "US-07-AC2 (suppress) vs B-KR2 (every scan sends); see docs/operations.md" }
+"schedule.mark_time" = { tag = "unvalidated", source = "user flow diagram screen 3: mark job 1:45 PM PT" }
+"notify.repeat_policy" = { tag = "unvalidated", source = "Aaron 2026-09-28: send a short no-change message (B-KR2) instead of silence; see docs/operations.md" }
 "notify.max_attempts" = { tag = "unvalidated", source = "US-07-AC3 retry" }
 "notify.retry_wait_seconds" = { tag = "unvalidated", source = "operational default" }
 "notify.latency_target_minutes" = { tag = "unvalidated", source = "requirement, not evidence: proposal US-07-AC1 and QR-2" }

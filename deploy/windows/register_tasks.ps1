@@ -23,5 +23,5 @@ function Add-Job([string]$Name, [string]$At, [string]$Command) {
 
 Add-Job "SPX Quant scan 10:30" "10:30" "scan --slot 10:30"
 Add-Job "SPX Quant scan 13:25" "13:25" "scan --slot 13:25"
-Add-Job "SPX Quant mark 13:35" "13:35" "mark"
+Add-Job "SPX Quant mark 13:45" "13:45" "mark"
 Write-Host "Check with: Get-ScheduledTask 'SPX Quant*' | Get-ScheduledTaskInfo"

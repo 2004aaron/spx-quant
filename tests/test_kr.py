@@ -77,15 +77,27 @@ class BetaKRTest(unittest.TestCase):
         self.assertIn("100%", text)
         self.assertTrue(ok)
 
-    def test_b_kr2_suppressed_repeats_do_not_count_as_messages(self):
+    def test_b_kr2_every_scheduled_scan_sends_something(self):
         text, ok = kr.b2(self.conn, PARAMS, date(2026, 10, 30), date(2026, 11, 2))
-        self.assertIn("2 of 4 scheduled scans sent a message", text)
+        self.assertIn("4 of 4 scheduled scans sent a message", text)
+        self.assertTrue(ok)
+
+    def test_b_kr2_suppress_policy_would_miss_repeats(self):
+        conn, p = memdb(), copy.deepcopy(PARAMS)
+        p.sections["notify"]["repeat_policy"] = "suppress"
+        for slot in p.schedule["slots"]:
+            hh, mm = (int(x) for x in slot.split(":"))
+            now = clock.local_to_utc("PT", datetime(2026, 10, 30, hh, mm))
+            pipeline.scan(conn, SyntheticSource(35.0, "flat", now=now), PROFILE, p, slot, channel=FakeChannel(),
+                          sleep=lambda s: None)
+        text, ok = kr.b2(conn, p, date(2026, 10, 30), date(2026, 10, 30))
+        self.assertIn("1 of 2 scheduled scans sent a message", text)
         self.assertFalse(ok)
 
-    def test_b_kr3_messages_carry_quotes_and_timestamps(self):
+    def test_b_kr3_short_no_change_messages_still_carry_quotes_and_timestamps(self):
         text, ok = kr.b3(self.conn, PARAMS, date(2026, 10, 30), date(2026, 11, 2))
         self.assertTrue(ok, text)
-        self.assertIn("2 of 2 complete", text)
+        self.assertIn("4 of 4 complete", text)
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ IDs follow the final proposal (September 27, 2026). Run everything with
 | US-06-AC2 31 minutes old or a missing field means no advice | `test_feed.ProbeTest.test_us06_ac2_stale_by_one_minute_fails`, `test_us06_ac2_missing_field_fails`, `test_scan.StandDownTest.test_us06_ac2_stale_data_gives_no_advice` |
 | US-06-AC3 exactly 30 minutes old passes | `test_feed.ProbeTest.test_us06_ac3_exactly_thirty_minutes_passes`, `test_scan.StandDownTest.test_us06_ac3_exactly_thirty_minutes_still_advises` |
 | US-07-AC1 delivered and delivery time recorded | `test_notify.DeliveryTest.test_us07_ac1_delivered_and_timed` |
-| US-07-AC2 no repeat when nothing changed | `test_notify.DeliveryTest.test_us07_ac2_same_conditions_same_proposal_not_resent` |
+| US-07-AC2 no repeat of the full alert when nothing changed (short no-change note instead) | `test_notify.DeliveryTest.test_us07_ac2_unchanged_scan_sends_a_short_no_change_note_not_the_full_alert`, `test_suppress_policy_sends_nothing_for_a_repeat` |
 | US-07-AC3 failed delivery retried and flagged | `test_notify.DeliveryTest.test_us07_ac3_retried_then_delivered`, `test_us07_ac3_final_failure_is_flagged` |
 | US-08-AC1 one complete row per alert | `test_scan.ProposalTest.test_us08_ac1_one_complete_row_per_scan`, `test_scan.LogTest.test_log_is_append_only` |
 | US-08-AC2 query by date range, in order | `test_scan.LogTest.test_us08_ac2_query_by_date_in_order` |
@@ -35,4 +35,4 @@ IDs follow the final proposal (September 27, 2026). Run everything with
 | QR-6 plain-text alerts | `test_scan.ProposalTest.test_b_kr3_quotes_and_both_timestamps_in_the_message` |
 | A-KR2 checks catch planted rows | `test_kr.AlphaKRTest.test_a_kr2_real_proposal_passes_and_every_planted_row_is_caught` |
 | A-KR3 24 cases, 0 violations | `test_kr_a3.AKR3Matrix` (24 tests); table in `docs/results/a-kr3.md` |
-| B-KR1 to B-KR3 scripts | `test_kr.BetaKRTest` |
+| B-KR1 to B-KR3 scripts | `test_kr.BetaKRTest`, `test_notify.DeliveryTest.test_no_change_note_for_a_proposal_keeps_the_legs_and_quotes` |

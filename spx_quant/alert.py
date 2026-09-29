@@ -30,8 +30,12 @@ def fingerprint(res: ScanResult) -> str:
     return hashlib.sha1(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
 
-def alert_id(slot_ts: datetime, fp: str) -> str:
-    return f"{clock.to_local('PT', slot_ts):%Y%m%d-%H%M}-{fp[:6]}"
+def alert_id(res: ScanResult, day) -> str:
+    """User flow diagram format: scan date plus expiry for a proposal (2026-11-03-2026-12-18),
+    2026-11-12-standdown, 2026-11-12-noadvice. A second alert the same day gets -2, -3."""
+    if res.kind == "proposal" and res.best:
+        return f"{day.isoformat()}-{res.best.position.exp.isoformat()}"
+    return f"{day.isoformat()}-{'standdown' if res.kind == 'stand_down' else 'noadvice'}"
 
 
 def _money(x: float | None, signed: bool = False) -> str:
@@ -68,8 +72,7 @@ def _candidate_summary(i: int, c: Candidate) -> str:
             f"{r.ann_return_bp:.1f}%/yr on BP, EV {_money(r.ev)}, POP {r.pop:.0%}, worst case {_money(r.worst_case)}")
 
 
-def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
-    title = KIND_TITLE.get(res.kind, "SCAN")
+def _header(res: ScanResult, title: str, aid: str, created_ts: datetime) -> list[str]:
     lines = [f"SPX QUANT | {title} | {aid}", f"Output: {clock.fmt(created_ts)}"]
     if res.data_ts is not None:
         age = f"{res.quote_age_min:.0f} min old, " if res.quote_age_min is not None else ""
@@ -77,8 +80,33 @@ def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
     else:
         lines.append(f"Data as of: n/a ({res.source})")
     mk = _market_lines(res)
-    if mk:
-        lines += ["", "MARKET"] + mk
+    return lines + (["", "MARKET"] + mk if mk else [])
+
+
+def render_unchanged(res: ScanResult, aid: str, created_ts: datetime, prev: dict) -> tuple[str, str]:
+    """Short message for a scan that repeats the last delivered decision. It still carries the
+    quotes and both timestamps (B-KR3); the full detail stays in the log under this alert ID."""
+    since = f"{prev['alert_id']} ({clock.fmt(clock.parse_utc(prev['created_ts']))})"
+    lines = _header(res, "NO CHANGE", aid, created_ts) + [""]
+    if res.kind == "proposal":
+        c = res.best
+        p, s = c.position, c.sized
+        subject = f"[SPX Quant {aid}] NO CHANGE: {p.label()} {p.ticker.lstrip('_')} {p.exp:%m/%d} x{s.contracts} still stands"
+        lines.append(f"NO CHANGE since {since}: same proposal, {p.label()} on {p.ticker.lstrip('_')} x{s.contracts}.")
+        lines += [_leg_line(c, l) for l in sorted(p.legs, key=lambda l: (l.right, l.strike))]
+        lines.append(f"  Credit now ${p.credit:,.2f} per lot at mid; worst case {_money(c.risk.worst_case)}.")
+    else:
+        what = "still STAND DOWN" if res.kind == "stand_down" else "still NO ADVICE"
+        subject = f"[SPX Quant {aid}] NO CHANGE: {what.lower()}"
+        lines.append(f"NO CHANGE since {since}: {what}.")
+        lines += [f"  - {x}" for x in res.reasons]
+    lines += ["", f"Full detail: python -m spx_quant log --full --from {clock.market_date(created_ts)}",
+              "Model estimates with tagged assumptions, not investment advice. The engine never places orders."]
+    return subject[:200], "\n".join(lines)
+
+
+def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
+    lines = _header(res, KIND_TITLE.get(res.kind, "SCAN"), aid, created_ts)
 
     if res.kind == "proposal":
         c = res.best
@@ -100,9 +128,11 @@ def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
             f"  Probability of profit: {r.pop:.1%}",
             f"  Expected value: {_money(r.ev)}",
             f"  Expected annual return on buying power: {r.ann_return_bp:.1f}%",
-            f"  Worst case (CVaR 1%, average of the worst 1% of outcomes): {_money(r.worst_case)}"
+            f"  Worst case (stress: index {r.assumptions['worst_case_move']:+.0%}, volatility "
+            f"+{r.assumptions['worst_case_vol_points']:g} points): {_money(r.worst_case)}"
             f" = {abs(r.worst_case) / prof.net_liq:.0%} of net liquidation",
-            f"  CVaR 5%: {_money(r.cvar5)}",
+            f"  Average of the worst 5% (CVaR 5%): {_money(r.cvar5)}",
+            f"  Average of the worst 1% (CVaR 1%): {_money(r.cvar1)}",
             f"  Max profit: {_money(r.max_profit)}",
             f"  Max loss: {_money(-r.max_loss) if r.max_loss is not None else 'unlimited (naked short option)'}",
             f"  Breakevens at expiration: {' / '.join(f'{b:,.2f}' for b in r.breakevens) or 'n/a'}",

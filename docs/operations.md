@@ -6,7 +6,12 @@
 | --- | --- | --- | --- |
 | scan | 10:30 | `scan --slot 10:30` | A-KR1 morning scan; quotes are about 15 minutes old |
 | scan | 13:25 | `scan --slot 13:25` | end-of-day scan, 10 minutes after the 13:15 SPX options close |
-| mark | 13:35 | `mark` | values every logged proposal at closing quotes (US-09) |
+| mark | 13:45 | `mark` | values every logged proposal at closing quotes (US-09); 1:45 PM matches the user flow diagram |
+
+The diagram's log example shows the second scan at 12:50. That sample is labeled
+illustrative, and A-KR2 checks end-of-day proposals against the next morning's
+board, which only makes sense for a scan after the close, so the build keeps 13:25.
+Change `schedule.slots` and `schedule.eod_slot` together if you want 12:50.
 
 Weekends and NYSE holidays log a `market_closed` scan and send nothing. A scan that
 starts more than 30 minutes after its slot says so in the alert and logs a
@@ -41,21 +46,30 @@ Credentials are environment variables, never files in the repo (QR-5).
 | email | `SPX_QUANT_SMTP_HOST`, `SPX_QUANT_SMTP_PORT` (587 STARTTLS, 465 SSL), `SPX_QUANT_SMTP_USER`, `SPX_QUANT_SMTP_PASSWORD`, optional `SPX_QUANT_SMTP_FROM` | Gmail needs an app password (Google Account, Security, App passwords) |
 | discord | `SPX_QUANT_DISCORD_WEBHOOK` | channel settings, Integrations, Webhooks, New Webhook, copy URL |
 
-`python -m spx_quant notify-test` sends one message on the profile's channel. The
-channel choice is still open with the mentor (US-07, due October 9).
+`python -m spx_quant notify-test` sends one message on the profile's channel. The user
+flow diagram shows email as the default and Discord as the alternative; confirm with
+the mentor by October 9 (US-07).
 
-## Repeat policy: a conflict in the proposal
+## Repeat policy: short "no change" messages (decided 2026-09-28)
 
-US-07-AC2 says an unchanged scan sends nothing. B-KR2 says every scheduled scan sends
-a message. Both cannot hold. `notify.repeat_policy` picks one:
+US-07-AC2 and the diagram (Part 4 screen 9, Part 5 notes) say an unchanged scan sends
+no second message. B-KR2 says every scheduled scan sends one. The build follows
+B-KR2 with `notify.repeat_policy = "brief"`: when a scan repeats the last delivered
+decision, it sends a short NO CHANGE message instead of the full alert. The note still
+carries the quotes, both timestamps and, for a proposal, each leg's bid and ask, so
+B-KR3 holds. The log stores exactly the text that was sent, plus `repeat_of` pointing
+at the earlier alert.
 
-* `suppress` (default): unchanged alerts are logged with delivery status
-  `suppressed_repeat` and not sent. B-KR2 will count them as missing.
-* `brief`: unchanged alerts go out with `UNCHANGED:` in the subject. B-KR2 passes;
-  US-07-AC2 as written does not.
+`repeat_policy = "suppress"` restores silence (and fails B-KR2).
 
-Decide before the B-KR2 window opens on October 30 and note the decision in the
-proposal's change log.
+Proposal wording to update so the documents agree:
+* US-07-AC2: "then no second full alert is sent; a short no-change notice names the
+  earlier alert."
+* Diagram Part 5 note 2 and the log row "11-03 12:50 same, no alert" say the same
+  thing the old way.
+* Diagram Part 5 note 1 says skipped scans, no-fit results and unset assumptions send
+  nothing. The build sends them as NO ADVICE or STAND DOWN messages, because B-KR2
+  counts a "no advice" notice as a message.
 
 ## Evidence commands
 
@@ -87,10 +101,14 @@ running until the scheduled `scan` jobs have logged a clean week, then pause it.
 2. **Portfolio-margin calibration.** The engine computes the regulatory floor. Put one
    strangle in the broker's trade ticket, compare buying power, and set
    `margin.pm_house_multiplier` to the ratio.
-3. **Worst case against the account.** Every proposal states its worst case as a
-   percent of net liquidation, but nothing caps it. On the September 28 close a
-   $150,000 portfolio-margin profile gets five XSP naked puts whose CVaR 1% is about a
-   third of the account. A cap would be one more line in `sizing.py`.
+3. **Worst case against the account.** The worst case now follows the diagram's
+   screen 8: an instant 10% index drop with volatility up 10 points. Every proposal
+   states it as a percent of net liquidation, but no rule limits it. The 8% cap limits
+   buying power, and buying power is not the most you can lose. On the September 28
+   close a $150,000 portfolio-margin profile gets five XSP naked puts using $11,204 of
+   buying power with a stress worst case of -$20,728 (14% of the account). A
+   `max_worst_case_pct` profile field would size contracts down until the worst case
+   fits.
 4. **How A-KR2 reads "checked against the next 10:30 scan".** The script checks an
    end-of-day proposal's legs for listing, bids, liquidity and quote age on the next
    morning's board. The credit is checked against the quotes it was built on, not the

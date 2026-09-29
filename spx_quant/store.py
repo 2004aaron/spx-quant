@@ -23,7 +23,7 @@ SCHEMA = {
                 market_date TEXT, kind TEXT NOT NULL, outcome TEXT, ticker TEXT, strategy TEXT, regime TEXT,
                 legs TEXT, contracts INTEGER, credit REAL, credit_per_lot REAL, bp_per_lot REAL, bp_total REAL,
                 delta_per_lot REAL, theta_per_lot REAL, risk TEXT, reasons TEXT, codes TEXT, quotes TEXT,
-                profile TEXT, candidates TEXT, fingerprint TEXT, subject TEXT, text TEXT""",
+                profile TEXT, candidates TEXT, fingerprint TEXT, repeat_of TEXT, subject TEXT, text TEXT""",
     "delivery": """alert_id TEXT NOT NULL, channel TEXT, attempt INTEGER, sent_ts TEXT, delivered_ts TEXT,
                    status TEXT NOT NULL, error TEXT""",
     "mark": """alert_id TEXT NOT NULL, market_date TEXT NOT NULL, ts TEXT, dte INTEGER, spot REAL, mid REAL,
@@ -107,10 +107,15 @@ def get_alert(conn, alert_id: str) -> dict | None:
     return decode(conn.execute("SELECT * FROM alert WHERE alert_id = ?", (alert_id,)).fetchone())
 
 
+def last_delivered(conn) -> dict | None:
+    """The most recent alert that actually reached the investor."""
+    return decode(conn.execute("""SELECT a.* FROM delivery d JOIN alert a ON a.alert_id = d.alert_id
+                                  WHERE d.status = 'delivered' ORDER BY d.id DESC LIMIT 1""").fetchone())
+
+
 def last_delivered_fingerprint(conn) -> str | None:
-    row = conn.execute("""SELECT a.fingerprint FROM delivery d JOIN alert a ON a.alert_id = d.alert_id
-                          WHERE d.status = 'delivered' ORDER BY d.id DESC LIMIT 1""").fetchone()
-    return row[0] if row else None
+    a = last_delivered(conn)
+    return a["fingerprint"] if a else None
 
 
 def open_proposals(conn) -> list[dict]:

@@ -47,8 +47,9 @@ class ProposalTest(unittest.TestCase):
 
     def test_us05_ac1_ac2_risk_block_labeled_with_units_and_assumptions(self):
         text = self.alert["text"]
-        for label in ("Probability of profit: ", "%", "Expected value: $", "Worst case (CVaR 1%", "of net liquidation",
-                      "CVaR 5%: ", "Breakevens at expiration: ", "ASSUMPTIONS", "held to expiration"):
+        for label in ("Probability of profit: ", "%", "Expected value: $", "Worst case (stress: index -10%, volatility +10 points)",
+                      "of net liquidation", "(CVaR 5%): ", "(CVaR 1%): ", "Breakevens at expiration: ", "ASSUMPTIONS",
+                      "held to expiration"):
             self.assertIn(label, text)
 
     def test_b_kr3_quotes_and_both_timestamps_in_the_message(self):

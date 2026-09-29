@@ -12,7 +12,7 @@ from datetime import datetime, time, timedelta
 
 from . import clock, notify, store
 from .data import cboe
-from .alert import alert_id, fingerprint, render
+from .alert import alert_id, fingerprint, render, render_unchanged
 from .engine import ScanResult, run_scan
 from .params import Params
 from .profile import Profile
@@ -105,9 +105,15 @@ def scan(conn, source, profile: Profile, params: Params, slot: str | None = None
         res.notes.append(f"late run: started {clock.fmt(started)}, {late:.0f} min after the {label} slot")
     created = source.now()
     fp = fingerprint(res)
-    aid = store.unique_alert_id(conn, alert_id(slot_ts, fp))
-    subject, text = render(res, aid, created)
+    aid = store.unique_alert_id(conn, alert_id(res, clock.market_date(started)))
+    prev = store.last_delivered(conn) if send else None
+    repeat = prev is not None and prev["fingerprint"] == fp
+    if repeat and params.notify.get("repeat_policy", "brief") == "brief":
+        subject, text = render_unchanged(res, aid, created, prev)
+    else:
+        subject, text = render(res, aid, created)
     row = alert_row(res, aid, label, slot_ts, created, fp, subject, text)
+    row["repeat_of"] = prev["alert_id"] if repeat else None
     store.insert(conn, "alert", **row)
     finished = source.now()
     store.insert(conn, "scan", slot=label, slot_ts=slot_ts, started_ts=started, finished_ts=finished,
