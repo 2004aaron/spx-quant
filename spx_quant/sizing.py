@@ -2,6 +2,10 @@
 
 The buying-power cap is inclusive: a candidate needing exactly the cap fits
 (US-03-AC4). Money is compared in whole cents so float noise cannot flip that.
+The worst-case limit works the same way on the stress-test loss: contracts are cut
+until contracts x loss per lot fits inside max_worst_case_pct of net liquidation.
+Buying power is what the broker holds; the worst case is what can actually be lost,
+and for a naked option the second can be several times the first.
 Delta:theta limit 1:N means |net delta| x N <= theta; delta in share-equivalents,
 theta in dollars per day. The ratio does not change with contract count.
 """
@@ -27,6 +31,11 @@ class Sized:
     dt_limit: float
     reasons: list[str] = field(default_factory=list)
     codes: list[str] = field(default_factory=list)
+    worst_per_lot: float = 0.0     # dollars lost per lot in the stress test (positive = loss)
+    worst_total: float = 0.0
+    worst_limit: float = 0.0
+    bp_contracts: int = 0          # what the buying-power cap alone would allow
+    limited_by: str = ""           # "buying power" or "worst case"
 
     @property
     def ok(self) -> bool:
@@ -44,22 +53,35 @@ class Sized:
     def as_dict(self) -> dict:
         return {"contracts": self.contracts, "bp_per_lot": self.bp_per_lot, "bp_total": self.bp_total,
                 "cap": self.cap, "delta_per_lot": self.delta_per_lot, "theta_per_lot": self.theta_per_lot,
-                "dt_limit": self.dt_limit, "dt_ratio": self.dt_ratio, "reasons": self.reasons, "codes": self.codes}
+                "dt_limit": self.dt_limit, "dt_ratio": self.dt_ratio, "reasons": self.reasons, "codes": self.codes,
+                "worst_per_lot": self.worst_per_lot, "worst_total": self.worst_total, "worst_limit": self.worst_limit,
+                "bp_contracts": self.bp_contracts, "limited_by": self.limited_by}
 
 
 def delta_theta_ok(delta: float, theta: float, limit: float) -> bool:
     return theta > 0 and abs(delta) * limit <= theta + 1e-9
 
 
-def size(profile: Profile, bp_per_lot: float, delta_per_lot: float, theta_per_lot: float) -> Sized:
+def size(profile: Profile, bp_per_lot: float, delta_per_lot: float, theta_per_lot: float,
+         worst_per_lot: float = 0.0) -> Sized:
     cap = profile.bp_cap_dollars
-    s = Sized(0, round(bp_per_lot, 2), 0.0, cap, delta_per_lot, theta_per_lot, profile.delta_theta_limit)
+    s = Sized(0, round(bp_per_lot, 2), 0.0, cap, delta_per_lot, theta_per_lot, profile.delta_theta_limit,
+              worst_per_lot=round(max(worst_per_lot, 0.0), 2), worst_limit=profile.worst_case_limit)
     if cents(bp_per_lot) <= 0:
         s.reasons.append("buying power could not be computed")
         s.codes.append("bp_unknown")
         return s
-    n = cents(cap) // cents(bp_per_lot)
-    if n == 0:
+    n = s.bp_contracts = cents(cap) // cents(bp_per_lot)
+    s.limited_by = "buying power"
+    if cents(s.worst_per_lot) > 0:
+        by_worst = cents(s.worst_limit) // cents(s.worst_per_lot)
+        if by_worst < n:
+            n, s.limited_by = by_worst, "worst case"
+        if by_worst == 0:
+            s.reasons.append(f"worst case ${s.worst_per_lot:,.2f} per lot is over the ${s.worst_limit:,.2f} limit "
+                             f"({profile.max_worst_case_pct:.0%} of ${profile.net_liq:,.0f})")
+            s.codes.append("over_worst_case")
+    if s.bp_contracts == 0:
         s.reasons.append(f"needs ${bp_per_lot:,.2f} of buying power per lot; cap is ${cap:,.2f} "
                          f"({profile.bp_cap_pct:.0%} of ${profile.net_liq:,.0f}, {profile.margin_type})")
         s.codes.append("over_cap")
@@ -73,4 +95,5 @@ def size(profile: Profile, bp_per_lot: float, delta_per_lot: float, theta_per_lo
     if s.ok:
         s.contracts = n
         s.bp_total = round(n * cents(bp_per_lot) / 100, 2)
+        s.worst_total = round(n * cents(s.worst_per_lot) / 100, 2)
     return s

@@ -1,5 +1,9 @@
 """Account profile (US-01): size, margin type, risk caps and notification address.
 
+Three caps apply to every proposal: buying power per position (bp_cap_pct), the
+delta:theta ratio, and the stress-test worst case (max_worst_case_pct of net
+liquidation; see analytics.stress_loss_per_lot).
+
 Lives in a local JSON file that is never committed (QR-5). Each pilot user has
 their own file; the path is passed to every command with --profile.
 """
@@ -25,6 +29,7 @@ class Profile:
     delta_theta_limit: float = 2.0
     notify_channel: str = "none"
     email_to: str = ""
+    max_worst_case_pct: float = 0.10
 
     @property
     def tier(self) -> str:
@@ -34,11 +39,17 @@ class Profile:
     def bp_cap_dollars(self) -> float:
         return round(self.net_liq * self.bp_cap_pct, 2)
 
+    @property
+    def worst_case_limit(self) -> float:
+        """Most a proposal may lose in the stress test, in dollars."""
+        return round(self.net_liq * self.max_worst_case_pct, 2)
+
     def __str__(self) -> str:
         note = f"  notify {self.notify_channel}" + (f" {self.email_to}" if self.email_to else "")
         return (f"net liq ${self.net_liq:,.0f}  margin {self.margin_type}  tier {self.tier}  "
                 f"per-position BP cap {self.bp_cap_pct:.0%} (${self.bp_cap_dollars:,.0f})  "
-                f"delta:theta limit 1:{self.delta_theta_limit:g}{note}")
+                f"delta:theta limit 1:{self.delta_theta_limit:g}  "
+                f"worst-case limit {self.max_worst_case_pct:.0%} (${self.worst_case_limit:,.0f}){note}")
 
 
 class ProfileError(ValueError):
@@ -53,7 +64,7 @@ def _num(name, v) -> float:
 
 
 def validate(net_liq, margin_type, bp_cap_pct=0.08, delta_theta_limit=2.0,
-             notify_channel="none", email_to="") -> Profile:
+             notify_channel="none", email_to="", max_worst_case_pct=0.10) -> Profile:
     net_liq = _num("net_liq", net_liq)
     if net_liq <= 0:
         raise ProfileError(f"net_liq: {net_liq:g} must be positive")
@@ -70,7 +81,10 @@ def validate(net_liq, margin_type, bp_cap_pct=0.08, delta_theta_limit=2.0,
     email_to = (email_to or "").strip()
     if notify_channel == "email" and "@" not in email_to:
         raise ProfileError("email_to: an address is required when notify_channel is email")
-    return Profile(net_liq, margin_type, bp_cap_pct, delta_theta_limit, notify_channel, email_to)
+    max_worst_case_pct = _num("max_worst_case_pct", max_worst_case_pct)
+    if not 0 < max_worst_case_pct <= 1:
+        raise ProfileError(f"max_worst_case_pct: {max_worst_case_pct:g} must be in (0, 1]")
+    return Profile(net_liq, margin_type, bp_cap_pct, delta_theta_limit, notify_channel, email_to, max_worst_case_pct)
 
 
 def save(profile: Profile, path: Path = DEFAULT_PATH) -> Path:

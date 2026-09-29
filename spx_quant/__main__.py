@@ -1,7 +1,7 @@
 """CLI: python -m spx_quant [--profile P] [--db D] [--params F] <command>
 
   profile set --net-liq N --margin reg_t|portfolio [--bp-cap 0.08] [--dt-limit 2]
-              [--notify none|email|discord] [--email-to ADDR]
+              [--notify none|email|discord] [--email-to ADDR] [--max-worst-case 0.10]
   profile show
   probe   [--ticker _SPX]                       feed check: shape, size, quote age
   regime                                        VIX term structure -> regime and gate
@@ -57,7 +57,7 @@ def cmd_profile(a, params) -> int:
         print(p if p else "no profile saved; run: python -m spx_quant profile set --net-liq N --margin reg_t|portfolio")
         return 0
     try:
-        p = prof.validate(a.net_liq, a.margin, a.bp_cap, a.dt_limit, a.notify, a.email_to)
+        p = prof.validate(a.net_liq, a.margin, a.bp_cap, a.dt_limit, a.notify, a.email_to, a.max_worst_case)
     except prof.ProfileError as e:
         prev = _profile_or_none(a)
         print(f"rejected: {e}")
@@ -169,6 +169,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--dt-limit", type=float, default=2.0)
     p.add_argument("--notify", choices=prof.CHANNELS, default="none")
     p.add_argument("--email-to", default="")
+    p.add_argument("--max-worst-case", type=float, default=0.10,
+                   help="largest stress-test loss allowed per proposal, as a fraction of net liq (default 0.10)")
     p.set_defaults(fn=cmd_profile)
 
     def replayable(q):

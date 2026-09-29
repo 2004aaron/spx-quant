@@ -40,6 +40,20 @@ class ProfileTest(unittest.TestCase):
                 prof.save(prof.validate(-5000, "portfolio"), path)
             self.assertEqual(prof.load(path).net_liq, 150_000)
 
+    def test_worst_case_limit_defaults_to_ten_percent_and_is_validated(self):
+        p = prof.validate(150_000, "portfolio")
+        self.assertEqual((p.max_worst_case_pct, p.worst_case_limit), (0.10, 15_000))
+        for bad in (0, -0.1, 1.5, "abc"):
+            with self.assertRaises(prof.ProfileError, msg=bad):
+                prof.validate(150_000, "portfolio", max_worst_case_pct=bad)
+
+    def test_profile_saved_before_the_worst_case_limit_still_loads(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "profile.json"
+            path.write_text('{"net_liq": 150000, "margin_type": "portfolio", "bp_cap_pct": 0.08, '
+                            '"delta_theta_limit": 2.0, "notify_channel": "none", "email_to": ""}')
+            self.assertEqual(prof.load(path).max_worst_case_pct, 0.10)
+
     def test_notification_address_is_part_of_the_profile(self):
         p = prof.validate(150_000, "portfolio", notify_channel="email", email_to=" me@example.com ")
         self.assertEqual(p.email_to, "me@example.com")

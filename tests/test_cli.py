@@ -48,7 +48,7 @@ class CliTest(unittest.TestCase):
         self.assertIn("1 position(s) marked", out)
 
         code, out = self.run_cli("kr", "a2", "--from", "2026-09-28", "--to", "2026-09-28", "--plant")
-        self.assertIn("7 of 7 planted rows caught", out)
+        self.assertIn("8 of 8 planted rows caught", out)
         self.assertEqual(code, 1)   # fewer than 10 proposals
 
     def test_stale_replay_refuses_to_advise(self):

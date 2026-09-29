@@ -37,7 +37,7 @@ class AlphaKRTest(unittest.TestCase):
         pipeline.scan(conn, replay(), pm150(), PARAMS, "10:30", send=False)
         text, ok = kr.a2(conn, PARAMS, date(2026, 9, 28), date(2026, 9, 28), plant=True)
         self.assertIn("0 of 1 proposals fail a check", text)
-        self.assertIn("7 of 7 planted rows caught", text)
+        self.assertIn("8 of 8 planted rows caught", text)
         self.assertFalse(ok)   # fewer than the 10 proposals the target needs
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM alert").fetchone()[0], 1)   # real log untouched
 

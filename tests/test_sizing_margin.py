@@ -91,5 +91,37 @@ class SizingTest(unittest.TestCase):
         self.assertEqual(size(self.prof, 1_000.0, 0.0, -5.0).codes, ["theta"])
 
 
+class WorstCaseSizingTest(unittest.TestCase):
+    def setUp(self):
+        self.prof = validate(150_000, "portfolio", 0.08, 2)   # worst-case limit 10% = $15,000
+
+    def test_sized_down_when_the_worst_case_binds_before_buying_power(self):
+        s = size(self.prof, 2_000.00, 0.0, 100.0, worst_per_lot=4_000.00)
+        self.assertTrue(s.ok, s.reasons)
+        self.assertEqual((s.bp_contracts, s.contracts, s.limited_by), (6, 3, "worst case"))
+        self.assertEqual((s.worst_total, s.worst_limit, s.bp_total), (12_000.00, 15_000.00, 6_000.00))
+
+    def test_worst_case_exactly_at_the_limit_is_allowed(self):
+        s = size(self.prof, 1_000.00, 0.0, 100.0, worst_per_lot=5_000.00)
+        self.assertEqual((s.contracts, s.worst_total), (3, 15_000.00))
+
+    def test_one_lot_over_the_limit_is_refused(self):
+        s = size(self.prof, 1_000.00, 0.0, 100.0, worst_per_lot=15_000.01)
+        self.assertFalse(s.ok)
+        self.assertEqual(s.codes, ["over_worst_case"])
+        self.assertIn("over the $15,000.00 limit (10% of $150,000)", s.reasons[0])
+
+    def test_buying_power_still_binds_when_it_is_tighter(self):
+        s = size(self.prof, 5_000.00, 0.0, 100.0, worst_per_lot=1_000.00)
+        self.assertEqual((s.contracts, s.limited_by), (2, "buying power"))
+
+    def test_no_stress_loss_means_no_worst_case_constraint(self):
+        self.assertEqual(size(self.prof, 1_000.00, 0.0, 100.0, worst_per_lot=0.0).contracts, 12)
+
+    def test_the_limit_follows_the_profile(self):
+        tight = validate(150_000, "portfolio", 0.08, 2, max_worst_case_pct=0.05)
+        self.assertEqual(size(tight, 1_000.00, 0.0, 100.0, worst_per_lot=4_000.00).contracts, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

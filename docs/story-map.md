@@ -36,3 +36,5 @@ IDs follow the final proposal (September 27, 2026). Run everything with
 | A-KR2 checks catch planted rows | `test_kr.AlphaKRTest.test_a_kr2_real_proposal_passes_and_every_planted_row_is_caught` |
 | A-KR3 24 cases, 0 violations | `test_kr_a3.AKR3Matrix` (24 tests); table in `docs/results/a-kr3.md` |
 | B-KR1 to B-KR3 scripts | `test_kr.BetaKRTest`, `test_notify.DeliveryTest.test_no_change_note_for_a_proposal_keeps_the_legs_and_quotes` |
+| Addition: worst-case limit sizes down or refuses (not yet in the proposal) | `test_sizing_margin.WorstCaseSizingTest` (6 tests), `test_scan.ProposalTest.test_worst_case_limit_cuts_the_size`, `test_scan.StandDownTest.test_tight_worst_case_limit_means_nothing_fits`, `test_profile.ProfileTest.test_worst_case_limit_defaults_to_ten_percent_and_is_validated` |
+| A-KR2 worst-case check catches a planted row | `test_kr.AlphaKRTest.test_a_kr2_real_proposal_passes_and_every_planted_row_is_caught` (8 of 8) |

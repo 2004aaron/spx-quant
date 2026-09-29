@@ -123,6 +123,13 @@ def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
             f"{prof.margin_type.replace('_', '-')} margin)",
             f"  Delta:theta: {s.dt_text()} within the 1:{s.dt_limit:g} limit (delta {s.delta_per_lot:+.2f} SPX-eq sh, "
             f"theta ${s.theta_per_lot:,.2f}/day per lot)",
+            f"  Worst-case limit: ${s.worst_total:,.2f} of ${s.worst_limit:,.2f} ({prof.max_worst_case_pct:.0%} of net liq; "
+            f"{s.contracts} x ${s.worst_per_lot:,.2f} stress loss per lot)",
+        ]
+        if s.limited_by == "worst case" and s.bp_contracts > s.contracts:
+            lines.append(f"  Sized down from {s.bp_contracts} to {s.contracts} lots so the worst case stays inside the limit; "
+                         f"buying power alone would allow {s.bp_contracts}.")
+        lines += [
             "",
             f"RISK (model estimates for all {s.contracts} lots)",
             f"  Probability of profit: {r.pop:.1%}",

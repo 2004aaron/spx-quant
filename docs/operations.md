@@ -101,14 +101,19 @@ running until the scheduled `scan` jobs have logged a clean week, then pause it.
 2. **Portfolio-margin calibration.** The engine computes the regulatory floor. Put one
    strangle in the broker's trade ticket, compare buying power, and set
    `margin.pm_house_multiplier` to the ratio.
-3. **Worst case against the account.** The worst case now follows the diagram's
-   screen 8: an instant 10% index drop with volatility up 10 points. Every proposal
-   states it as a percent of net liquidation, but no rule limits it. The 8% cap limits
-   buying power, and buying power is not the most you can lose. On the September 28
-   close a $150,000 portfolio-margin profile gets five XSP naked puts using $11,204 of
-   buying power with a stress worst case of -$20,728 (14% of the account). A
-   `max_worst_case_pct` profile field would size contracts down until the worst case
-   fits.
+3. **Worst-case limit (built 2026-09-29).** The worst case follows the diagram's
+   screen 8: an instant 10% index drop with volatility up 10 points. The profile now
+   caps it: `max_worst_case_pct` (default 0.10, set with `--max-worst-case`) is the
+   largest stress loss a proposal may carry, as a share of net liquidation. The sizer
+   takes the smaller of the buying-power count and the worst-case count, says in the
+   alert when the worst case was the binding limit, and refuses a structure whose
+   single lot is already over. On the September 28 close the $150,000
+   portfolio-margin profile drops from five XSP naked puts (-$20,728, 14%) to three
+   (about -$12,400, 8%). The 10% default is a placeholder for the mentor to set, like
+   the account tiers. Suggested proposal wording, as a new US-01 criterion: "Given a
+   worst-case limit of 10% of net liquidation, when a candidate's stress loss would
+   exceed it at the buying-power size, then the engine proposes fewer contracts and
+   says why, or proposes nothing if one contract is already over."
 4. **How A-KR2 reads "checked against the next 10:30 scan".** The script checks an
    end-of-day proposal's legs for listing, bids, liquidity and quote age on the next
    morning's board. The credit is checked against the quotes it was built on, not the

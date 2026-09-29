@@ -91,7 +91,8 @@ def evaluate(chain: cboe.Chain, profile: Profile, strategies: list[str], now: da
             continue
         bp = margin.bp_per_lot(pos, chain.spot, profile.margin_type, now, params)
         theta = pos.theta(chain.spot, now, rate)
-        sz = sizing.size(profile, bp, pos.net_delta, theta)
+        worst = analytics.stress_loss_per_lot(pos, chain.spot, now, params)
+        sz = sizing.size(profile, bp, pos.net_delta, theta, worst)
         cand = Candidate(pos, sz, reasons=list(sz.reasons), codes=list(sz.codes))
         if sz.ok:
             iv = analytics.atm_iv(chain.rows, pos.root, pos.exp, chain.spot)
@@ -178,9 +179,10 @@ def run_scan(source, profile: Profile, params: Params, now: datetime | None = No
     res.outcome, res.kind = "stand_down", "stand_down"
     if not cands:
         res.reasons, res.codes = ["no candidate could be built from liquid strikes in the DTE window"], ["no_candidates"]
-    elif all(set(c.codes) & {"over_cap", "delta_theta", "theta", "bp_unknown"} for c in cands):
+    elif all(set(c.codes) & {"over_cap", "delta_theta", "theta", "bp_unknown", "over_worst_case"} for c in cands):
         res.reasons = [f"no proposal could be sized for this account ({profile.margin_type}, "
-                       f"${profile.bp_cap_dollars:,.0f} per-position cap, delta:theta 1:{profile.delta_theta_limit:g})"]
+                       f"${profile.bp_cap_dollars:,.0f} per-position cap, delta:theta 1:{profile.delta_theta_limit:g}, "
+                       f"worst case at most ${profile.worst_case_limit:,.0f})"]
         res.codes = ["no_fit"]
     else:
         res.reasons = ["no candidate passed the risk checks"]

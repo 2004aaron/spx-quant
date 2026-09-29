@@ -15,9 +15,10 @@ class AKR3Matrix(unittest.TestCase):
 
 def _case(size, margin, regime, vix):
     def test(self):
-        prof, res, violations = kr.a3_case(size, margin, regime, vix, PARAMS)
+        prof, res, violations, worst = kr.a3_case(size, margin, regime, vix, PARAMS)
         self.assertIn(res.outcome, ("proposal", "stand_down"))
         self.assertEqual(violations, [])
+        self.assertEqual(worst, [])
         if res.best:
             self.assertLessEqual(res.best.sized.bp_total, prof.bp_cap_dollars)
     return test

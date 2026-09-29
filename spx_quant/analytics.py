@@ -115,6 +115,15 @@ def implied_crash(pos: Position, spot: float, t: float, sigma: float, jump: floa
     return round(0.5 * (lo + hi), 3)
 
 
+def stress_loss_per_lot(pos: Position, spot: float, now: datetime, params: Params) -> float:
+    """Dollars lost per lot if the index moves worst_case_move at once and every leg's IV rises
+    worst_case_vol_points (user flow screen 8). Positive = loss; zero if the stress makes money."""
+    move, vol = (params.need(*k.split(".")) for k in STRESS)
+    rate = params.need("risk", "rate")
+    pnl = pos.value(spot * (1 + move), now, rate, vol / 100) - pos.value(spot, now, rate)
+    return max(-pnl, 0.0)
+
+
 def compute(pos: Position, contracts: int, bp_total: float, spot: float, sigma_atm: float,
             now: datetime, params: Params | None = None) -> Risk:
     p = params or load_params()
@@ -132,7 +141,7 @@ def compute(pos: Position, contracts: int, bp_total: float, spot: float, sigma_a
     base = pos.value(spot, now, rate)
     stress = [(mv, round((pos.value(spot * (1 + mv), now, rate) - base) * k, 2)) for mv in p.risk.get("stress_moves", [])]
     max_loss = round((pos.width * 100 - pos.credit) * k, 2) if pos.defined_risk else None
-    worst = (pos.value(spot * (1 + wc_move), now, rate, wc_vol / 100) - base) * k
+    worst = (pos.value(spot * (1 + wc_move), now, rate, wc_vol / 100) - base) * k   # negative = loss
     ann = ev / bp_total * 365 / max(pos.dte, 1) * 100 if bp_total > 0 else 0.0
     assumptions = {
         "hold": "held to expiration, settled at intrinsic value",

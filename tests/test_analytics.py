@@ -62,6 +62,11 @@ class RiskTest(unittest.TestCase):
         self.assertLess(self.risk(self.strangle, heavy).ev, self.risk(self.strangle).ev)
         self.assertGreater(self.risk(self.strangle).implied_crash_per_year, 0)
 
+    def test_stress_loss_per_lot_matches_the_risk_blocks_worst_case(self):
+        per_lot = analytics.stress_loss_per_lot(self.strangle, self.chain.spot, EOD, PARAMS)
+        self.assertGreater(per_lot, 0)
+        self.assertAlmostEqual(self.risk(self.strangle, k=3).worst_case, -3 * per_lot, places=1)
+
     def test_annualized_return_on_buying_power(self):
         r = self.risk(self.strangle, k=1, bp=20_000)
         self.assertAlmostEqual(r.ann_return_bp, r.ev / 20_000 * 365 / self.strangle.dte * 100, places=1)

@@ -35,6 +35,14 @@ class ProposalTest(unittest.TestCase):
         self.assertLessEqual(abs(a["delta_per_lot"]) * 2, a["theta_per_lot"])
         self.assertEqual(a["profile"]["net_liq"], 150_000)
 
+    def test_worst_case_limit_cuts_the_size(self):
+        a = self.alert
+        s = next(c["sized"] for c in a["candidates"] if c["strategy"] == a["strategy"] and c["ticker"] == a["ticker"])
+        self.assertEqual((s["bp_contracts"], s["contracts"], s["limited_by"]), (5, 3, "worst case"))
+        self.assertLessEqual(-a["risk"]["worst_case"], 15_000 + 0.03)
+        self.assertIn("Sized down from 5 to 3 lots so the worst case stays inside the limit", a["text"])
+        self.assertIn("Worst-case limit: $", a["text"])
+
     def test_us03_ac2_ranked_by_annual_return_on_bp_and_runner_up_shown(self):
         ranked = self.rec.result.ranked
         self.assertGreaterEqual(len(ranked), 2)
@@ -100,6 +108,11 @@ class StandDownTest(unittest.TestCase):
         self.assertEqual(rec.result.outcome, "stand_down")
         self.assertIn("no proposal could be sized for this account", rec.alert["reasons"][0])
         self.assertEqual(rec.result.codes, ["no_fit"])
+
+    def test_tight_worst_case_limit_means_nothing_fits(self):
+        _, rec = self.scan(replay(EOD), validate(150_000, "portfolio", 0.08, 2, max_worst_case_pct=0.001))
+        self.assertEqual(rec.result.codes, ["no_fit"])
+        self.assertIn("worst case at most $150", rec.alert["reasons"][0])
 
     def test_us06_ac2_stale_data_gives_no_advice(self):
         conn, rec = self.scan(SyntheticSource(17.0, age_minutes=31))

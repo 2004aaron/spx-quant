@@ -123,6 +123,10 @@ def a2_checks(conn, alert: dict, params: Params) -> dict[str, str]:
     out = {"bp_cap": "ok" if cents(alert["bp_total"]) <= cents(cap) else f"FAIL: ${alert['bp_total']:,.2f} > ${cap:,.2f}",
            "delta_theta": "ok" if delta_theta_ok(alert["delta_per_lot"], alert["theta_per_lot"], prof["delta_theta_limit"])
            else f"FAIL: delta {alert['delta_per_lot']} vs theta {alert['theta_per_lot']} at 1:{prof['delta_theta_limit']:g}"}
+    limit = prof["net_liq"] * prof.get("max_worst_case_pct", 0.10)
+    worst = -(alert.get("risk") or {}).get("worst_case", 0.0)
+    slack = 0.01 * max(alert.get("contracts") or 1, 1)   # per-lot cents rounding in the sizer
+    out["worst_case"] = "ok" if worst <= limit + slack else f"FAIL: worst case -${worst:,.2f} beyond the ${limit:,.2f} limit"
     lo, hi = _credit_range(alert["legs"])
     c = alert["credit_per_lot"]
     out["credit"] = "ok" if lo - 0.005 <= c <= hi + 0.005 else f"FAIL: credit ${c:,.2f} outside ${lo:,.2f} to ${hi:,.2f}"
@@ -155,8 +159,9 @@ def _plant_rows(conn, params: Params, day: date) -> dict[str, str]:
     base = dict(slot=params.schedule["slots"][0], slot_ts=t0, created_ts=t0, data_ts=t0 - timedelta(minutes=15),
                 market_date=day, kind="proposal", outcome="proposal", ticker="_SPX", strategy="strangle",
                 legs=base_legs, contracts=1, credit=3460.0, credit_per_lot=3460.0, bp_per_lot=10000.0, bp_total=10000.0,
-                delta_per_lot=0.0, theta_per_lot=150.0, risk={"pop": 0.8, "ev": 100.0, "worst_case": -50000.0},
-                reasons=[], codes=[], profile={"net_liq": 150000.0, "bp_cap_pct": 0.08, "delta_theta_limit": 2.0},
+                delta_per_lot=0.0, theta_per_lot=150.0, risk={"pop": 0.8, "ev": 100.0, "worst_case": -10000.0},
+                reasons=[], codes=[], profile={"net_liq": 150000.0, "bp_cap_pct": 0.08, "delta_theta_limit": 2.0,
+                                               "max_worst_case_pct": 0.10},
                 fingerprint="plant", subject="planted", text="planted")
     bad = {
         "bp_cap": {"bp_per_lot": 12000.01, "bp_total": 12000.01},
@@ -165,6 +170,7 @@ def _plant_rows(conn, params: Params, day: date) -> dict[str, str]:
         "liquidity": {"legs": [dict(base_legs[0], oi=0, vol=0), base_legs[1]]},
         "fresh": {"data_ts": t0 - timedelta(minutes=31)},
         "credit": {"credit_per_lot": 3600.0, "credit": 3600.0},
+        "worst_case": {"risk": {"pop": 0.8, "ev": 100.0, "worst_case": -15000.02}},
     }
     planted = {}
     for check, change in bad.items():
@@ -187,7 +193,7 @@ def _plant_rows(conn, params: Params, day: date) -> dict[str, str]:
 
 
 def a2(conn, params: Params, start: date, end: date, plant: bool = False) -> tuple[str, bool]:
-    cols = ("bp_cap", "delta_theta", "bids", "liquidity", "fresh", "credit")
+    cols = ("bp_cap", "delta_theta", "worst_case", "bids", "liquidity", "fresh", "credit")
     real = [a for a in store.alerts_between(conn, start, end, "proposal") if not a["alert_id"].startswith("PLANT-")]
     rows, failed, pending = [], 0, 0
     for a in real:
@@ -229,7 +235,7 @@ def a3_case(net_liq: float, margin_type: str, regime: str, vix: float, params: P
     src = SyntheticSource(vix, "contango")
     res = run_scan(src, prof, params)
     rate = params.risk["rate"]
-    violations = []
+    violations, worst = [], []
     for c in res.ranked:
         p, n = c.position, c.sized.contracts
         spot = src.chains[p.ticker]["data"]["current_price"]
@@ -241,27 +247,38 @@ def a3_case(net_liq: float, margin_type: str, regime: str, vix: float, params: P
             violations.append(f"{p.strategy}: {n} lots use ${bp:,.2f} against a ${prof.bp_cap_dollars:,.2f} cap")
         if not (theta > 0 and abs(delta) * prof.delta_theta_limit <= theta + 1e-6):
             violations.append(f"{p.strategy}: delta {delta:+.2f} vs theta ${theta:,.2f}/day over 1:{prof.delta_theta_limit:g}")
-    return prof, res, violations
+        r = params.risk
+        loss = -(p.value(spot * (1 + r["worst_case_move"]), res.now, rate, r["worst_case_vol_points"] / 100)
+                 - p.value(spot, res.now, rate)) * n
+        if loss > prof.worst_case_limit + 0.01 * n:
+            worst.append(f"{p.strategy}: {n} lots lose ${loss:,.2f} in the stress test, limit ${prof.worst_case_limit:,.2f}")
+    return prof, res, violations, worst
 
 
 def a3(params: Params) -> tuple[str, bool]:
-    rows, total_v = [], 0
+    rows, total_v, total_w = [], 0, 0
     for size in A3_SIZES:
         for margin in A3_MARGINS:
             for regime, vix in A3_REGIMES:
-                prof, res, v = a3_case(size, margin, regime, vix, params)
+                prof, res, v, w = a3_case(size, margin, regime, vix, params)
                 total_v += len(v)
+                total_w += len(w)
                 b = res.best
                 what = (f"{b.position.label()} {b.position.ticker.lstrip('_')} x{b.sized.contracts}" if b
                         else "; ".join(res.reasons)[:60])
                 bp = f"${b.sized.bp_total:,.0f}" if b else "-"
                 dt = b.sized.dt_text() if b else "-"
+                wc = f"${b.sized.worst_total:,.0f} of ${prof.worst_case_limit:,.0f}" if b else "-"
+                if b and b.sized.limited_by == "worst case":
+                    wc += f" (cut from {b.sized.bp_contracts})"
                 rows.append([f"${size:,}", margin, f"{regime} (VIX {vix})", res.outcome, what, bp,
-                             f"${prof.bp_cap_dollars:,.0f}", dt, len(v)])
+                             f"${prof.bp_cap_dollars:,.0f}", dt, wc, len(v)])
     text = "### A-KR3 sizing matrix: 4 account sizes x 2 margin types x 3 regimes\n\n"
-    text += _table(["net liq", "margin", "regime", "outcome", "best candidate", "BP used", "cap", "delta:theta", "violations"], rows)
-    text += f"\n\n**{len(rows)} cases, {total_v} violations** across every ranked candidate (target 24 cases, 0 violations)."
-    return text, len(rows) == 24 and total_v == 0
+    text += _table(["net liq", "margin", "regime", "outcome", "best candidate", "BP used", "cap", "delta:theta",
+                    "worst case vs limit", "violations"], rows)
+    text += f"\n\n**{len(rows)} cases, {total_v} violations** of the BP cap or delta:theta limit across every ranked " \
+            f"candidate (target 24 cases, 0 violations). Worst-case limit breaches: {total_w} (not part of the KR as written)."
+    return text, len(rows) == 24 and total_v == 0 and total_w == 0
 
 
 # ---------------------------------------------------------------- Beta
