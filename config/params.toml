@@ -47,8 +47,8 @@ min_mid = 0.30
 [margin]
 regt_index_pct = 0.15
 regt_min_pct = 0.10
-pm_down = -0.08
-pm_up = 0.06
+pm_down = -0.15
+pm_up = 0.10
 pm_points = 10
 pm_min_per_contract = 37.50
 pm_house_multiplier = 1.0
@@ -112,11 +112,11 @@ latency_target_minutes = 20
 "liquidity.min_mid" = { tag = "unvalidated", source = "engine-build-notes" }
 "margin.regt_index_pct" = { tag = "unvalidated", source = "Cboe Margin Manual, broad-based index short options: 15% of index value less OTM amount" }
 "margin.regt_min_pct" = { tag = "unvalidated", source = "Cboe Margin Manual: minimum 10% of index value (calls) or strike (puts)" }
-"margin.pm_down" = { tag = "unvalidated", source = "FINRA Rule 4210(g) high-cap diversified index valuation range, down leg" }
-"margin.pm_up" = { tag = "unvalidated", source = "FINRA Rule 4210(g) high-cap diversified index valuation range, up leg" }
+"margin.pm_down" = { tag = "unvalidated", source = "tastytrade, What is Portfolio Margin: minimum -15% stress for equity-based indices (regulatory floor is -8%)" }
+"margin.pm_up" = { tag = "unvalidated", source = "tastytrade, What is Portfolio Margin: minimum +10% stress for equity-based indices (regulatory floor is +6%)" }
 "margin.pm_points" = { tag = "unvalidated", source = "FINRA Rule 4210(g): ten equidistant valuation points" }
 "margin.pm_min_per_contract" = { tag = "unvalidated", source = "FINRA Rule 4210(g): $0.375 x multiplier per contract" }
-"margin.pm_house_multiplier" = { tag = "unvalidated", source = "set to broker BP / engine BP after the first side-by-side check; 1.0 until then" }
+"margin.pm_house_multiplier" = { tag = "unvalidated", source = "set to broker BP / engine BP after one tastytrade ticket check (python -m spx_quant margin-check); 1.0 until then" }
 "risk.vrp_haircut" = { tag = "unvalidated", source = "engine-build-notes finding 5: realized vol below implied; placeholder pending mentor" }
 "risk.crash_prob_annual" = { tag = "unvalidated", source = "engine-build-notes finding 5: post-1987 record roughly 0.15-0.5 per year" }
 "risk.crash_size" = { tag = "unvalidated", source = "placeholder: one-day gap size used for the crash branch" }

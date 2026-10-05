@@ -1,9 +1,10 @@
 """Buying-power models for Reg-T and portfolio margin, per one lot.
 
-Reg-T follows the Cboe rule for broad-based index options. Portfolio margin is the
-regulatory TIMS-style floor: worst loss over ten equidistant index moves from -8%
-to +6%, legs repriced at their own IV. Broker house requirements run higher, so
-pm_house_multiplier exists to calibrate against a real broker quote (A-KR2).
+Reg-T follows the Cboe rule for broad-based index options. Portfolio margin is a
+TIMS-style scan: worst loss over ten equidistant index moves from -15% to +10%
+(tastytrade's published minimum for equity indices; the regulatory floor is -8% to
++6%), legs repriced at their own IV. pm_house_multiplier calibrates the result to
+one real broker ticket (python -m spx_quant margin-check).
 """
 from __future__ import annotations
 

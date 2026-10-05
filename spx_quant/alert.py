@@ -131,7 +131,7 @@ def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
                          f"buying power alone would allow {s.bp_contracts}.")
         lines += [
             "",
-            f"RISK (model estimates for all {s.contracts} lots)",
+            f"RISK (model estimates for {'1 lot' if s.contracts == 1 else f'all {s.contracts} lots'})",
             f"  Probability of profit: {r.pop:.1%}",
             f"  Expected value: {_money(r.ev)}",
             f"  Expected annual return on buying power: {r.ann_return_bp:.1f}%",

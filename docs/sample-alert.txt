@@ -7,24 +7,23 @@ MARKET
   Regime: contango / normal (slope +0.134)
 
 PROPOSAL: naked put on XSP, expires 2026-11-13 (46 DTE)
-  SELL 3 XSP261113P00725000  put 725  bid 4.24  ask 4.49  mid 4.37  IV 18.4%  delta -0.161
-  Credit: $1,310 total (3 x $436.50 per lot at mid; natural $424.00, far $449.00)
-  Buying power: $6,722.52 of $12,000.00 cap (3 x $2,240.84, portfolio margin)
+  SELL 1 XSP261113P00725000  put 725  bid 4.24  ask 4.49  mid 4.37  IV 18.4%  delta -0.161
+  Credit: $436 total (1 x $436.50 per lot at mid; natural $424.00, far $449.00)
+  Buying power: $6,516.96 of $12,000.00 cap (1 x $6,516.96, portfolio margin)
   Delta:theta: 1:7.4 within the 1:2 limit (delta +1.61 SPX-eq sh, theta $11.84/day per lot)
-  Worst-case limit: $12,436.80 of $15,000.00 (10% of net liq; 3 x $4,145.60 stress loss per lot)
-  Sized down from 5 to 3 lots so the worst case stays inside the limit; buying power alone would allow 5.
+  Worst-case limit: $4,145.60 of $15,000.00 (10% of net liq; 1 x $4,145.60 stress loss per lot)
 
-RISK (model estimates for all 3 lots)
+RISK (model estimates for 1 lot)
   Probability of profit: 91.0%
-  Expected value: $334
-  Expected annual return on buying power: 39.4%
-  Worst case (stress: index -10%, volatility +10 points): -$12,437 = 8% of net liquidation
-  Average of the worst 5% (CVaR 5%): -$15,259
-  Average of the worst 1% (CVaR 1%): -$28,889
-  Max profit: $1,310
+  Expected value: $111
+  Expected annual return on buying power: 13.6%
+  Worst case (stress: index -10%, volatility +10 points): -$4,146 = 3% of net liquidation
+  Average of the worst 5% (CVaR 5%): -$5,086
+  Average of the worst 1% (CVaR 1%): -$9,630
+  Max profit: $436
   Max loss: unlimited (naked short option)
   Breakevens at expiration: 720.63
-  Stress, instant index move: -20% -$30,731 | -10% -$9,815 | -5% -$3,183 | +5% +$1,032 | +10% +$1,258
+  Stress, instant index move: -20% -$10,244 | -10% -$3,272 | -5% -$1,061 | +5% +$344 | +10% +$419
   Implied crash rate: 0.316 per year (the crash frequency this premium pays for, before any volatility risk premium)
 
 ASSUMPTIONS
@@ -35,16 +34,16 @@ ASSUMPTIONS
   unvalidated, rate unvalidated, worst_case_move unvalidated, worst_case_vol_points unvalidated.
 
 RANKING (expected annual return on buying power; best first)
-  1. naked put XSP 11/13 -725P x3: 39.4%/yr on BP, EV $334, POP 91%, worst case -$12,437
-  2. strangle XSP 11/13 -805C -725P x3: 24.0%/yr on BP, EV $178, POP 80%, worst case -$11,804
-  Ranked first because it has the highest expected annual return on buying power (39.4%) of 2 candidates that fit.
+  1. naked put XSP 11/13 -725P x1: 13.6%/yr on BP, EV $111, POP 91%, worst case -$4,146
+  2. strangle XSP 11/13 -805C -725P x1: 7.6%/yr on BP, EV $59, POP 80%, worst case -$3,935
+  Ranked first because it has the highest expected annual return on buying power (13.6%) of 2 candidates that fit.
 
 CONSIDERED, NOT PROPOSED
-  - strangle SPX 11/13 -8050C -7250P: worst case $39,359.86 per lot is over the $15,000.00 limit (10% of $150,000); needs $19,700.09 of buying power per lot; cap is $12,000.00 (8% of $150,000, portfolio)
-  - naked put SPX 11/13 -7250P: worst case $41,453.85 per lot is over the $15,000.00 limit (10% of $150,000); needs $22,405.75 of buying power per lot; cap is $12,000.00 (8% of $150,000, portfolio)
-  - iron condor SPX 11/13 -8050C +8100C +7200P -7250P: expected value -$160 is not positive under the stated assumptions
+  - strangle SPX 11/13 -8050C -7250P: worst case $39,359.86 per lot is over the $15,000.00 limit (10% of $150,000); needs $62,456.41 of buying power per lot; cap is $12,000.00 (8% of $150,000, portfolio)
+  - naked put SPX 11/13 -7250P: worst case $41,453.85 per lot is over the $15,000.00 limit (10% of $150,000); needs $65,173.75 of buying power per lot; cap is $12,000.00 (8% of $150,000, portfolio)
+  - iron condor SPX 11/13 -8050C +8100C +7200P -7250P: expected value -$96 is not positive under the stated assumptions
   - put vertical SPX 11/13 +7375P -7425P: delta:theta 1:1.0 breaks the 1:2 limit (delta +2.75 SPX-eq sh, theta $2.86/day per lot)
-  - iron condor XSP 11/13 -805C +810C +720P -725P: expected value -$301 is not positive under the stated assumptions
+  - iron condor XSP 11/13 -805C +810C +720P -725P: expected value -$190 is not positive under the stated assumptions
   - put vertical XSP 11/13 +740P -745P: delta:theta 1:0.7 breaks the 1:2 limit (delta +0.29 SPX-eq sh, theta $0.20/day per lot)
 
 NOTES

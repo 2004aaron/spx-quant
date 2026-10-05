@@ -11,6 +11,8 @@
   record  --out FILE.json.gz                    save the current boards for replay
   kr      a1|a2|a3|b1|b2|b3 [--from D] [--to D] [--plant]
   notify-test                                   send a test message on the profile's channel
+  margin-check [--alert ID] [--broker-bp N [--apply]]
+                                                compare engine buying power with one broker ticket
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from . import __version__, clock, kr, mark, notify, pipeline, store
+from . import __version__, calibrate, clock, kr, mark, notify, pipeline, store
 from . import profile as prof
 from .data import cboe
 from .params import DEFAULT_PATH as PARAMS_PATH, load_params
@@ -153,6 +155,26 @@ def cmd_notify_test(a, params) -> int:
     return 0
 
 
+def cmd_margin_check(a, params) -> int:
+    conn = store.connect(a.db)
+    alert = store.get_alert(conn, a.alert) if a.alert else calibrate.latest_proposal(conn)
+    if alert is None or alert["kind"] != "proposal":
+        print(f"no proposal {a.alert} in {a.db}" if a.alert else f"no proposals in {a.db}; run a scan first")
+        return 1
+    try:
+        text, ratio = calibrate.report(alert, params, a.broker_bp)
+    except ValueError as e:
+        print(f"rejected: {e}")
+        return 2
+    print(text)
+    if a.apply and ratio is not None:
+        calibrate.apply(a.params, ratio, alert, a.broker_bp, calibrate.engine_bp(alert, params), date.today())
+        print(f"wrote pm_house_multiplier = {ratio} to {a.params}")
+    elif a.apply:
+        print("nothing written")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="spx_quant", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--version", action="version", version=f"spx-quant {__version__}")
@@ -215,6 +237,12 @@ def main(argv: list[str] | None = None) -> int:
     q.set_defaults(fn=cmd_kr)
 
     sub.add_parser("notify-test").set_defaults(fn=cmd_notify_test)
+
+    q = sub.add_parser("margin-check")
+    q.add_argument("--alert", help="proposal alert ID (default: the latest proposal in the log)")
+    q.add_argument("--broker-bp", type=float, help="buying-power effect shown in the broker's ticket for the whole order")
+    q.add_argument("--apply", action="store_true", help="write the new pm_house_multiplier to the params file")
+    q.set_defaults(fn=cmd_margin_check)
 
     a = ap.parse_args(argv)
     if a.cmd == "profile" and a.action == "set" and (a.net_liq is None or a.margin is None):

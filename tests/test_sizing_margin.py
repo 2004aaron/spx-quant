@@ -41,7 +41,7 @@ class PortfolioMarginTest(unittest.TestCase):
         p = pos("naked_put", [leg("P", 6500, 20.0, -1, -0.10)])
         scen = margin.pm_scenarios(p, 7000, NOW, PARAMS)
         self.assertEqual(len(scen), 10)
-        self.assertEqual(min(scen, key=lambda s: s[1])[0], -0.08)
+        self.assertEqual(min(scen, key=lambda s: s[1])[0], -0.15)
         self.assertLess(margin.bp_per_lot(p, 7000, "portfolio", NOW, PARAMS), margin.bp_per_lot(p, 7000, "reg_t", NOW, PARAMS))
 
     def test_house_multiplier_scales(self):

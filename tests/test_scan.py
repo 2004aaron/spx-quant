@@ -10,6 +10,19 @@ from spx_quant.synthetic import SyntheticSource
 from tests.helpers import EOD, PARAMS, memdb, params_without, pm150, replay
 
 
+class WorstCaseCutTest(unittest.TestCase):
+    """A 20% buying-power cap allows 4 lots; 4 x $4,145.60 stress loss is over the $15,000 limit."""
+
+    def test_worst_case_limit_cuts_the_size(self):
+        rec = pipeline.scan(memdb(), replay(), validate(150_000, "portfolio", 0.20, 2), PARAMS, slot="13:25", send=False)
+        a = rec.alert
+        s = next(c["sized"] for c in a["candidates"] if c["strategy"] == a["strategy"] and c["ticker"] == a["ticker"])
+        self.assertEqual((s["bp_contracts"], s["contracts"], s["limited_by"]), (4, 3, "worst case"))
+        self.assertLessEqual(-a["risk"]["worst_case"], 15_000 + 0.03)
+        self.assertIn("Sized down from 4 to 3 lots so the worst case stays inside the limit", a["text"])
+        self.assertIn("RISK (model estimates for all 3 lots)", a["text"])
+
+
 class ProposalTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -35,13 +48,14 @@ class ProposalTest(unittest.TestCase):
         self.assertLessEqual(abs(a["delta_per_lot"]) * 2, a["theta_per_lot"])
         self.assertEqual(a["profile"]["net_liq"], 150_000)
 
-    def test_worst_case_limit_cuts_the_size(self):
+    def test_buying_power_sets_the_size_when_the_worst_case_fits(self):
         a = self.alert
         s = next(c["sized"] for c in a["candidates"] if c["strategy"] == a["strategy"] and c["ticker"] == a["ticker"])
-        self.assertEqual((s["bp_contracts"], s["contracts"], s["limited_by"]), (5, 3, "worst case"))
+        self.assertEqual((s["bp_contracts"], s["contracts"], s["limited_by"]), (1, 1, "buying power"))
         self.assertLessEqual(-a["risk"]["worst_case"], 15_000 + 0.03)
-        self.assertIn("Sized down from 5 to 3 lots so the worst case stays inside the limit", a["text"])
+        self.assertNotIn("Sized down", a["text"])
         self.assertIn("Worst-case limit: $", a["text"])
+        self.assertIn("RISK (model estimates for 1 lot)", a["text"])
 
     def test_us03_ac2_ranked_by_annual_return_on_bp_and_runner_up_shown(self):
         ranked = self.rec.result.ranked

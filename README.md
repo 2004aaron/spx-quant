@@ -38,7 +38,7 @@ Python 3.11 or newer. No third-party packages, no install step.
 ```bash
 git clone https://github.com/2004aaron/spx-quant.git
 cd spx-quant
-python -m unittest discover -s tests -t . -v        # 146 tests, about 20 seconds
+python -m unittest discover -s tests -t . -v        # 148 tests, about 20 seconds
 
 python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 --dt-limit 2 --max-worst-case 0.10
 python -m spx_quant profile show
@@ -49,6 +49,7 @@ python -m spx_quant scan --no-send    # full scan, logged to ~/.spx-quant/quant.
 python -m spx_quant log --from 2026-10-05
 python -m spx_quant mark              # after the close
 python -m spx_quant kr a3             # A-KR3 sizing matrix
+python -m spx_quant margin-check      # compare engine buying power with one broker ticket
 ```
 
 Global options go before the command: `--profile PATH`, `--db PATH`, `--params PATH`.
@@ -75,6 +76,7 @@ spx_quant/
   data/cboe.py     live feed, replay, freshness check             US-06
   strategies.py    four structure builders                        US-03
   margin.py        Reg-T and portfolio-margin buying power        US-03
+  calibrate.py     margin-check: engine vs broker buying power    A-KR2
   sizing.py        inclusive BP cap, delta:theta guardrail        US-01, US-03
   analytics.py     risk block                                     US-05
   engine.py        one scan, pure: returns a ScanResult

@@ -51,6 +51,30 @@ class CliTest(unittest.TestCase):
         self.assertIn("8 of 8 planted rows caught", out)
         self.assertEqual(code, 1)   # fewer than 10 proposals
 
+    def test_margin_check_sets_the_house_multiplier(self):
+        import shutil
+        from spx_quant.params import DEFAULT_PATH, load_params
+        params = Path(self.tmp.name) / "params.toml"
+        shutil.copy(DEFAULT_PATH, params)
+        self.run_cli("profile", "set", "--net-liq", "150000", "--margin", "portfolio")
+        code, out = self.run_cli("margin-check")
+        self.assertEqual(code, 1)
+        self.assertIn("no proposals", out)
+        self.run_cli("scan", "--slot", "13:25", "--no-send", "--replay", str(REPLAY), "--now", EOD)
+        code, out = self.run_cli("margin-check")
+        self.assertIn("SELL 1 XSP261113P00725000", out)
+        self.assertIn("Engine buying power: $6,516.96", out)
+        self.assertIn("--broker-bp", out)
+        code, out = self.run_cli("--params", str(params), "margin-check", "--broker-bp", "8146.20", "--apply")
+        self.assertEqual(code, 0, out)
+        self.assertIn("Set margin.pm_house_multiplier = 1.250", out)
+        q = load_params(params)
+        self.assertEqual(q.margin["pm_house_multiplier"], 1.25)
+        self.assertEqual(q.provenance["margin.pm_house_multiplier"]["tag"], "unvalidated: partially supported")
+        self.assertIn("broker $8,146.20 vs engine $6,516.96", q.provenance["margin.pm_house_multiplier"]["source"])
+        code, out = self.run_cli("--params", str(params), "margin-check", "--broker-bp", "-1")
+        self.assertEqual(code, 2)
+
     def test_stale_replay_refuses_to_advise(self):
         self.run_cli("profile", "set", "--net-liq", "150000", "--margin", "portfolio")
         code, out = self.run_cli("scan", "--no-send", "--replay", str(REPLAY))
