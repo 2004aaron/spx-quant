@@ -7,20 +7,19 @@ from spx_quant import clock, pipeline, store
 from spx_quant.engine import run_scan
 from spx_quant.profile import validate
 from spx_quant.synthetic import SyntheticSource
-from tests.helpers import EOD, PARAMS, memdb, params_without, pm150, replay
+from tests.helpers import EOD, PARAMS, memdb, params_without, pm150, pm150_loose, replay
 
 
 class WorstCaseCutTest(unittest.TestCase):
-    """A 20% buying-power cap allows 4 lots; 4 x $4,145.60 stress loss is over the $15,000 limit."""
+    """A 20% buying-power cap allows 4 strangles; 2 x $3,934.67 stress loss is already over the $7,500 limit."""
 
     def test_worst_case_limit_cuts_the_size(self):
         rec = pipeline.scan(memdb(), replay(), validate(150_000, "portfolio", 0.20, 2), PARAMS, slot="13:25", send=False)
         a = rec.alert
         s = next(c["sized"] for c in a["candidates"] if c["strategy"] == a["strategy"] and c["ticker"] == a["ticker"])
-        self.assertEqual((s["bp_contracts"], s["contracts"], s["limited_by"]), (4, 3, "worst case"))
-        self.assertLessEqual(-a["risk"]["worst_case"], 15_000 + 0.03)
-        self.assertIn("Sized down from 4 to 3 lots so the worst case stays inside the limit", a["text"])
-        self.assertIn("RISK (model estimates for all 3 lots)", a["text"])
+        self.assertEqual((a["strategy"], s["bp_contracts"], s["contracts"], s["limited_by"]), ("strangle", 4, 1, "worst case"))
+        self.assertLessEqual(-a["risk"]["worst_case"], 7_500 + 0.03)
+        self.assertIn("Sized down from 4 to 1 lot so the worst case stays inside the limit", a["text"])
 
 
 class ProposalTest(unittest.TestCase):
@@ -52,17 +51,24 @@ class ProposalTest(unittest.TestCase):
         a = self.alert
         s = next(c["sized"] for c in a["candidates"] if c["strategy"] == a["strategy"] and c["ticker"] == a["ticker"])
         self.assertEqual((s["bp_contracts"], s["contracts"], s["limited_by"]), (1, 1, "buying power"))
-        self.assertLessEqual(-a["risk"]["worst_case"], 15_000 + 0.03)
+        self.assertLessEqual(-a["risk"]["worst_case"], 7_500 + 0.03)
         self.assertNotIn("Sized down", a["text"])
         self.assertIn("Worst-case limit: $", a["text"])
         self.assertIn("RISK (model estimates for 1 lot)", a["text"])
 
+    def test_naked_put_is_too_directional_at_1_to_2_in_spy_deltas(self):
+        self.assertEqual((self.alert["strategy"], self.alert["ticker"]), ("strangle", "_XSP"))
+        put = next(c for c in self.alert["candidates"] if c["strategy"] == "naked_put" and c["ticker"] == "_XSP")
+        self.assertIn("delta_theta", put["codes"])
+        self.assertIn("SPY deltas", " ".join(put["reasons"]))
+
     def test_us03_ac2_ranked_by_annual_return_on_bp_and_runner_up_shown(self):
-        ranked = self.rec.result.ranked
+        rec = pipeline.scan(memdb(), replay(), pm150_loose(), PARAMS, slot="13:25", send=False)
+        ranked = rec.result.ranked
         self.assertGreaterEqual(len(ranked), 2)
         rets = [c.risk.ann_return_bp for c in ranked]
         self.assertEqual(rets, sorted(rets, reverse=True))
-        text = self.alert["text"]
+        text = rec.alert["text"]
         self.assertIn("RANKING", text)
         self.assertIn("  2. ", text)
         self.assertIn("Ranked first because it has the highest expected annual return on buying power", text)

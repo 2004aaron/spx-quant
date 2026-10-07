@@ -90,7 +90,7 @@ def size(profile: Profile, bp_per_lot: float, delta_per_lot: float, theta_per_lo
         s.codes.append("theta")
     elif not delta_theta_ok(delta_per_lot, theta_per_lot, profile.delta_theta_limit):
         s.reasons.append(f"delta:theta {s.dt_text()} breaks the 1:{profile.delta_theta_limit:g} limit "
-                         f"(delta {delta_per_lot:+.2f} SPX-eq sh, theta ${theta_per_lot:,.2f}/day per lot)")
+                         f"(delta {delta_per_lot:+.2f} SPY deltas, theta ${theta_per_lot:,.2f}/day per lot)")
         s.codes.append("delta_theta")
     if s.ok:
         s.contracts = n

@@ -1,7 +1,7 @@
 """CLI: python -m spx_quant [--profile P] [--db D] [--params F] <command>
 
-  profile set --net-liq N --margin reg_t|portfolio [--bp-cap 0.08] [--dt-limit 2]
-              [--notify none|email|discord] [--email-to ADDR] [--max-worst-case 0.10]
+  profile set --net-liq N --margin reg_t|portfolio [--bp-cap 0.08] [--dt-limit N]
+              [--notify none|email|discord] [--email-to ADDR] [--max-worst-case 0.05]
   profile show
   probe   [--ticker _SPX]                       feed check: shape, size, quote age
   regime                                        VIX term structure -> regime and gate
@@ -188,11 +188,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--net-liq", type=float)
     p.add_argument("--margin", choices=prof.MARGIN_TYPES)
     p.add_argument("--bp-cap", type=float, default=0.08)
-    p.add_argument("--dt-limit", type=float, default=2.0)
+    p.add_argument("--dt-limit", type=float, default=None,
+                   help="delta:theta limit 1:N in SPY deltas (default by tier: 2 under $1M, 7 at $1M+)")
     p.add_argument("--notify", choices=prof.CHANNELS, default="none")
     p.add_argument("--email-to", default="")
-    p.add_argument("--max-worst-case", type=float, default=0.10,
-                   help="largest stress-test loss allowed per proposal, as a fraction of net liq (default 0.10)")
+    p.add_argument("--max-worst-case", type=float, default=prof.DEFAULT_MAX_WORST_CASE,
+                   help="largest stress-test loss allowed per proposal, as a fraction of net liq (default 0.05)")
     p.set_defaults(fn=cmd_profile)
 
     def replayable(q):

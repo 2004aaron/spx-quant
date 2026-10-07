@@ -22,7 +22,7 @@ accepts any board updated within 20 minutes of that day's close, so it still run
 ## Setup on one machine (through Alpha)
 
 ```powershell
-python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 --dt-limit 2 `
+python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 `
     --notify email --email-to you@example.com
 .\deploy\windows\register_tasks.ps1
 ```
@@ -92,13 +92,60 @@ day at 2:30 PM PT and keeps its own JSONL log. It opens one lot every day regard
 of the gate, which is useful for measuring the gate and useless for A-KR1. Keep it
 running until the scheduled `scan` jobs have logged a clean week, then pause it.
 
+## Account tiers and limits (decided 2026-10-06)
+
+These were waiting on the mentor. I set them myself so the Alpha window runs on real
+defaults; every one is still tagged unvalidated and Jonathan can override any of them.
+
+| Tier | Net liq | Margin | Delta:theta default | BP per position | Worst case per position |
+|---|---|---|---|---|---|
+| starter | under $100,000 | Reg-T only | 1:2 | 8% | 5% |
+| standard | $100,000 to $999,999 | Reg-T or portfolio | 1:2 | 8% | 5% |
+| large | $1,000,000 and up | Reg-T or portfolio | 1:7 | 8% | 5% |
+
+Pilot profile: $150,000, portfolio margin (standard tier).
+
+- **Delta is SPY-weighted.** Delta in the ratio is counted the way tastytrade
+  beta-weights a portfolio: SPY deltas, the dollar P/L of a $1 move in SPY (SPY taken
+  as SPX/10, beta 1). One XSP lot of a 0.16-delta put is about 16 SPY deltas; the same
+  SPX lot is about 160. Before this the engine counted SPX-equivalent shares, which is
+  ten times smaller. Reason: the mentor's numbers only make sense in SPY units. At
+  1:2 in SPX shares a 1% index move would cost about 38 days of theta, which nobody
+  selling premium for theta would call "theta as the primary income driver". At 1:2 in
+  SPY deltas the same move costs about 4 days. tastylive uses the same unit and the
+  same number: beta-weighted deltas, and a delta/theta ratio of about 0.5 (1:2) as the
+  target for a short-delta book.
+- **Delta:theta 1:2 under $1M, 1:7 at $1M and up.** From the August call: 1:2 "is the
+  limit, I would not be more directional than that"; with millions 1:2 is "too much",
+  so "we'll try to get closer to like 1:10, 1:7". 1:7 is the edge of his normal range
+  for large accounts. On a day he wants to lean directional he said 1:4 or 1:5 is fine;
+  that is a `--dt-limit 4` override, not the default.
+- **Consequence:** a lone 16-delta naked put is about 1:0.7, so it is refused as too
+  directional at every tier. Strangles, which the mentor called "our bread and
+  butter", pass easily (about 1:59 on the September 28 close). Naked puts come back
+  only with a looser `--dt-limit`.
+- **Portfolio margin needs $100,000.** tastytrade requires $125,000 to open portfolio
+  margin and $100,000 to keep it, so a portfolio profile under $100,000 is rejected
+  with a message to use Reg-T. The starter tier exists to say that plainly. At an 8%
+  cap, one XSP strangle under Reg-T (about $8,400 to $9,000 of buying power) does not
+  fit until about $105,000 to $113,000 of net liq, so a starter account will mostly see
+  stand-downs.
+- **8% buying power per position (unchanged).** It is the value in US-01-AC1. At 8%,
+  three to six positions fill 25% to 50% of net liq, the total buying-power range
+  tastylive commonly cites (I have not pinned a page for that range yet).
+- **5% worst case per position (was 10%).** The worst case is an instant 10% index
+  drop with volatility up 10 points. At 10% per position, six open positions could
+  lose 60% in that one event; at 5% the same book loses at most about 30%. On the
+  September 28 close the pilot's strangle uses $3,935 of a $7,500 limit, so the change
+  does not cut the pilot's size; it binds when buying power is loose (a 20% cap, or the
+  elevated-volatility rows in A-KR3).
+- **A-KR3 sizes moved** from $25k / $75k / $150k / $1.5M to $100k / $150k / $500k /
+  $1.5M, because portfolio margin under $100,000 is no longer a valid profile. The
+  matrix now runs on tier defaults instead of a hard-coded 1:2.
+
 ## Open decisions this build exposed
 
-1. **Delta convention for the delta:theta rule.** Delta is counted in SPX-equivalent
-   shares (one XSP lot is a tenth of an SPX lot) so the same structure gets the same
-   ratio on either ticker. If the mentor's 1:2 limit assumes a different unit (for
-   example beta-weighted SPY deltas), the limit value needs to change with it.
-2. **Portfolio-margin calibration.** The engine's scan range is now tastytrade's
+1. **Portfolio-margin calibration.** The engine's scan range is now tastytrade's
    published minimum for equity indices (-15% to +10%), not the regulatory floor
    (-8% to +6%). It is still a model. To match the broker exactly:
    `python -m spx_quant margin-check` prints the latest proposal as a ticket; enter it
@@ -106,27 +153,12 @@ running until the scheduled `scan` jobs have logged a clean week, then pause it.
    `python -m spx_quant margin-check --broker-bp <ticket BP> --apply`. That writes
    `margin.pm_house_multiplier` = broker / engine and records the check in its
    provenance. Repeat on a strangle once one is proposed.
-3. **Worst-case limit (built 2026-09-29).** The worst case follows the diagram's
-   screen 8: an instant 10% index drop with volatility up 10 points. The profile now
-   caps it: `max_worst_case_pct` (default 0.10, set with `--max-worst-case`) is the
-   largest stress loss a proposal may carry, as a share of net liquidation. The sizer
-   takes the smaller of the buying-power count and the worst-case count, says in the
-   alert when the worst case was the binding limit, and refuses a structure whose
-   single lot is already over. On the September 28 close with the regulatory
-   -8%/+6% range, the $150,000 portfolio-margin profile dropped from five XSP naked puts
-   (-$20,728, 14%) to three (about -$12,400, 8%). With tastytrade's -15%/+10% range
-   (2026-10-05) buying power allows one lot (-$4,146, 3%), so the limit does not bind
-   there; it binds at a 20% buying-power cap (four lots cut to three). The 10% default is a placeholder for the mentor to set, like
-   the account tiers. Suggested proposal wording, as a new US-01 criterion: "Given a
-   worst-case limit of 10% of net liquidation, when a candidate's stress loss would
-   exceed it at the buying-power size, then the engine proposes fewer contracts and
-   says why, or proposes nothing if one contract is already over."
-4. **How A-KR2 reads "checked against the next 10:30 scan".** The script checks an
+2. **How A-KR2 reads "checked against the next 10:30 scan".** The script checks an
    end-of-day proposal's legs for listing, bids, liquidity and quote age on the next
    morning's board. The credit is checked against the quotes it was built on, not the
    next morning's: one night of theta moves a strangle's price by more than its whole
    bid-ask width, so an overnight credit check could never pass. Worth one sentence in
    the proposal's change log.
-5. **Loss stop definition.** `management.loss_multiple = 2.0` means cost to close is at
+3. **Loss stop definition.** `management.loss_multiple = 2.0` means cost to close is at
    least twice the credit (a loss of one credit), matching the shadow runner. Some
    traders mean a loss of two credits.

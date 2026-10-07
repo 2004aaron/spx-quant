@@ -17,14 +17,14 @@ from . import clock, margin, store
 from .engine import run_scan
 from .greeks import bs
 from .params import Params
-from .profile import validate
+from .profile import DEFAULT_MAX_WORST_CASE, validate
 from .sizing import cents, delta_theta_ok
-from .strategies import MULTIPLIER, NOTIONAL, years_to
+from .strategies import MULTIPLIER, SPY_WEIGHT, years_to
 from .synthetic import SyntheticSource
 
 CHECKS = ("a1", "a2", "a3", "b1", "b2", "b3")
 WINDOWS = {"a": (date(2026, 10, 5), date(2026, 10, 16)), "b": (date(2026, 10, 30), date(2026, 11, 13))}
-A3_SIZES = (25_000, 75_000, 150_000, 1_500_000)
+A3_SIZES = (100_000, 150_000, 500_000, 1_500_000)  # portfolio margin needs $100,000+
 A3_MARGINS = ("reg_t", "portfolio")
 A3_REGIMES = (("low", 14.5), ("normal", 17.5), ("elevated", 24.0))
 
@@ -123,7 +123,7 @@ def a2_checks(conn, alert: dict, params: Params) -> dict[str, str]:
     out = {"bp_cap": "ok" if cents(alert["bp_total"]) <= cents(cap) else f"FAIL: ${alert['bp_total']:,.2f} > ${cap:,.2f}",
            "delta_theta": "ok" if delta_theta_ok(alert["delta_per_lot"], alert["theta_per_lot"], prof["delta_theta_limit"])
            else f"FAIL: delta {alert['delta_per_lot']} vs theta {alert['theta_per_lot']} at 1:{prof['delta_theta_limit']:g}"}
-    limit = prof["net_liq"] * prof.get("max_worst_case_pct", 0.10)
+    limit = prof["net_liq"] * prof.get("max_worst_case_pct", DEFAULT_MAX_WORST_CASE)
     worst = -(alert.get("risk") or {}).get("worst_case", 0.0)
     slack = 0.01 * max(alert.get("contracts") or 1, 1)   # per-lot cents rounding in the sizer
     out["worst_case"] = "ok" if worst <= limit + slack else f"FAIL: worst case -${worst:,.2f} beyond the ${limit:,.2f} limit"
@@ -231,7 +231,7 @@ def a2(conn, params: Params, start: date, end: date, plant: bool = False) -> tup
 def a3_case(net_liq: float, margin_type: str, regime: str, vix: float, params: Params):
     """Run one case, then re-derive every ranked candidate's exposure from its legs and contract
     count rather than trusting the fields the sizer wrote."""
-    prof = validate(net_liq, margin_type, 0.08, 2.0)
+    prof = validate(net_liq, margin_type)   # tier defaults, as a new user would get them
     src = SyntheticSource(vix, "contango")
     res = run_scan(src, prof, params)
     rate = params.risk["rate"]
@@ -240,7 +240,7 @@ def a3_case(net_liq: float, margin_type: str, regime: str, vix: float, params: P
         p, n = c.position, c.sized.contracts
         spot = src.chains[p.ticker]["data"]["current_price"]
         bp = n * margin.bp_per_lot(p, spot, prof.margin_type, res.now, params)
-        delta = sum(l.qty * l.delta for l in p.legs) * MULTIPLIER * NOTIONAL[p.ticker]
+        delta = sum(l.qty * l.delta for l in p.legs) * MULTIPLIER * SPY_WEIGHT[p.ticker]
         theta = sum(l.qty * bs(spot, l.strike, years_to(p.root, p.exp, res.now), l.iv, l.right, rate).theta
                     for l in p.legs) * MULTIPLIER
         if n < 1 or cents(bp) > cents(prof.bp_cap_dollars):

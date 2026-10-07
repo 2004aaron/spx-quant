@@ -39,7 +39,7 @@ class Candidate:
         lo, hi = p.credit_range
         return {"strategy": p.strategy, "ticker": p.ticker, "root": p.root, "exp": p.exp.isoformat(), "dte": p.dte,
                 "legs": [l.as_dict() for l in p.legs], "width": p.width, "credit_per_lot": p.credit,
-                "credit_range_per_lot": [lo, hi], "net_delta_per_lot": p.net_delta, "notional": p.notional,
+                "credit_range_per_lot": [lo, hi], "net_delta_per_lot": p.net_delta, "spy_weight": p.spy_weight,
                 "sized": self.sized.as_dict(), "risk": self.risk.as_dict() if self.risk else None,
                 "reasons": self.reasons, "codes": self.codes}
 

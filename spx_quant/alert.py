@@ -121,13 +121,13 @@ def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
             f"natural ${lo:,.2f}, far ${hi:,.2f})",
             f"  Buying power: ${s.bp_total:,.2f} of ${s.cap:,.2f} cap ({s.contracts} x ${s.bp_per_lot:,.2f}, "
             f"{prof.margin_type.replace('_', '-')} margin)",
-            f"  Delta:theta: {s.dt_text()} within the 1:{s.dt_limit:g} limit (delta {s.delta_per_lot:+.2f} SPX-eq sh, "
+            f"  Delta:theta: {s.dt_text()} within the 1:{s.dt_limit:g} limit (delta {s.delta_per_lot:+.2f} SPY deltas, "
             f"theta ${s.theta_per_lot:,.2f}/day per lot)",
             f"  Worst-case limit: ${s.worst_total:,.2f} of ${s.worst_limit:,.2f} ({prof.max_worst_case_pct:.0%} of net liq; "
             f"{s.contracts} x ${s.worst_per_lot:,.2f} stress loss per lot)",
         ]
         if s.limited_by == "worst case" and s.bp_contracts > s.contracts:
-            lines.append(f"  Sized down from {s.bp_contracts} to {s.contracts} lots so the worst case stays inside the limit; "
+            lines.append(f"  Sized down from {s.bp_contracts} to {s.contracts} lot{'' if s.contracts == 1 else 's'} so the worst case stays inside the limit; "
                          f"buying power alone would allow {s.bp_contracts}.")
         lines += [
             "",

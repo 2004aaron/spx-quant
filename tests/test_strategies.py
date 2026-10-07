@@ -69,7 +69,7 @@ class RecordedBoardTest(unittest.TestCase):
         p = self.build("strangle")
         put, call = sorted(p.legs, key=lambda l: l.right, reverse=True)
         self.assertLessEqual(abs(abs(put.delta) - abs(call.delta)), 0.02)
-        self.assertLess(abs(p.net_delta), 3)
+        self.assertLess(abs(p.net_delta), 30)   # SPY deltas on an SPX lot
 
     def test_wings_sit_further_out_of_the_money(self):
         ic = self.build("iron_condor")

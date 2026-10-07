@@ -3,7 +3,7 @@ import unittest
 from datetime import datetime
 
 from spx_quant import clock, mark, pipeline, store
-from tests.helpers import MARK_TIME, PARAMS, PatchedSource, memdb, pm150, replay
+from tests.helpers import MARK_TIME, PARAMS, PatchedSource, memdb, pm150_loose, replay
 
 
 def pt(y, m, d, hh=13, mm=35):
@@ -13,8 +13,8 @@ def pt(y, m, d, hh=13, mm=35):
 class MarkTest(unittest.TestCase):
     def setUp(self):
         self.conn = memdb()
-        self.alert = pipeline.scan(self.conn, replay(), pm150(), PARAMS, "13:25", send=False).alert
-        self.assertEqual(self.alert["kind"], "proposal")
+        self.alert = pipeline.scan(self.conn, replay(), pm150_loose(), PARAMS, "13:25", send=False).alert
+        self.assertEqual((self.alert["kind"], self.alert["strategy"]), ("proposal", "naked_put"))
         self.leg = self.alert["legs"][0]["sym"]
 
     def test_us09_ac1_daily_mark_as_if_opened(self):

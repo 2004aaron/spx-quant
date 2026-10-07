@@ -17,7 +17,10 @@ from .greeks import bs
 from .params import Params, load_params
 
 MULTIPLIER = 100
-NOTIONAL = {"_SPX": 1.0, "_XSP": 0.1}  # delta is reported in SPX-equivalent shares so 10 XSP lots == 1 SPX lot
+# Delta is reported the way tastytrade beta-weights a portfolio: SPY deltas, the dollar P/L of a $1
+# move in SPY. SPY is taken as SPX/10 with beta 1, so one SPX share-delta is 10 SPY deltas and one
+# XSP share-delta is 1. The mentor's 1:2 delta:theta limit is read in these units (decided 2026-10-06).
+SPY_WEIGHT = {"_SPX": 10.0, "_XSP": 1.0}
 AM_SETTLED_ROOTS = {"SPX"}  # SPX standard monthlies settle on the open; SPXW and XSP settle on the close
 BUILDERS = ("strangle", "naked_put", "put_vertical", "iron_condor")
 DEFINED_RISK = {"put_vertical", "iron_condor"}
@@ -73,13 +76,13 @@ class Position:
         return round(lo, 2), round(hi, 2)
 
     @property
-    def notional(self) -> float:
-        return NOTIONAL.get(self.ticker, 1.0)
+    def spy_weight(self) -> float:
+        return SPY_WEIGHT.get(self.ticker, 1.0)
 
     @property
     def net_delta(self) -> float:
-        """SPX-equivalent shares per lot, from exchange deltas (XSP counts one tenth)."""
-        return round(sum(l.qty * l.delta for l in self.legs) * MULTIPLIER * self.notional, 3)
+        """SPY-weighted deltas per lot, from exchange deltas."""
+        return round(sum(l.qty * l.delta for l in self.legs) * MULTIPLIER * self.spy_weight, 3)
 
     @property
     def defined_risk(self) -> bool:

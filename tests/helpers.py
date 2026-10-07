@@ -23,6 +23,11 @@ def pm150():
     return validate(150_000, "portfolio", 0.08, 2)
 
 
+def pm150_loose():
+    """Delta:theta loosened to 1:0.5 so a naked put (about 1:0.7 in SPY deltas) also fits."""
+    return validate(150_000, "portfolio", 0.08, 0.5)
+
+
 def memdb():
     return store.connect(":memory:")
 
