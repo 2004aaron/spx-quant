@@ -38,7 +38,7 @@ Python 3.11 or newer. No third-party packages, no install step.
 ```bash
 git clone https://github.com/2004aaron/spx-quant.git
 cd spx-quant
-python -m unittest discover -s tests -t . -v        # 151 tests, about 20 seconds
+python -m unittest discover -s tests -t . -v        # 153 tests, about 20 seconds
 
 python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 --max-worst-case 0.05
 python -m spx_quant profile show
@@ -89,7 +89,7 @@ spx_quant/
   synthetic.py     synthetic boards for tests and A-KR3
   clock.py         Eastern/Pacific time and the NYSE calendar without tzdata
 config/params.toml every parameter with a validation tag and a source
-deploy/            Windows Task Scheduler script, crontab for the Beta host
+deploy/            Windows Task Scheduler script, crontab for the Beta host, cloud log carrier
 docs/              build notes, backtest findings, story map, operations, KR results
 tests/             unittest suite; tests/data holds the recorded session
 ```

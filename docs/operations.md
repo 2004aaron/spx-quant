@@ -19,6 +19,26 @@ starts more than 30 minutes after its slot says so in the alert and logs a
 options stop at 10:15 PT, so the 13:25 scan answers NO ADVICE (stale); the mark job
 accepts any board updated within 20 minutes of that day's close, so it still runs.
 
+## Cloud schedule (from October 8, 2026)
+
+Two weekday cloud scheduled tasks run the A-KR1 scans so the laptop does not have to
+be on:
+
+| Task | Time (PT) | Steps |
+| --- | --- | --- |
+| SPX Quant 10:30 scan | 10:30 | clone `main`, load the log, `scan --slot 10:30`, save the log |
+| SPX Quant end-of-day scan + mark | 13:25 | clone `main`, load the log, `scan --slot 13:25`, `mark`, save the log, `kr a1` |
+
+Each run starts in an empty container, so the log lives between runs as the project
+document `claude/quant-log.sql`: a SQL dump that ends with a sha256 line.
+`deploy/cloud/logdoc.py load` refuses a copy whose checksum does not match, so a
+damaged copy never replaces the log. The profile ($150,000, portfolio margin) is set
+fresh on every run and is never committed (QR-6). The 13:25 run has about 20 minutes
+of slack: after the 13:15 close the quotes age past the 30-minute limit around 13:45.
+
+The older "SPX Quant shadow log" task (2:30 PM PT) keeps running beside these; it
+writes its own documents and does not count toward A-KR1.
+
 ## Setup on one machine (through Alpha)
 
 ```powershell
