@@ -2,106 +2,104 @@
 
 A regime-aware advisory engine for self-directed index option sellers (SPX / XSP).
 It reads delayed market data, classifies the volatility regime from the VIX term
-structure, builds and sizes candidate short-premium positions, and either sends a
-specific proposal with its risk numbers or says **STAND DOWN** with the reasons.
-It never places an order.
+structure, builds and sizes candidate short-premium positions against your account
+profile, and either sends a specific proposal with its risk numbers or says
+**STAND DOWN** with the reasons. It never places an order.
 
 Westmont College CS 195 Senior Seminar capstone, Fall 2026. Student: Aaron Wu
-(`aawu`, GitHub `2004aaron`). Instructor: Mike Ryu.
+(`aawu`, GitHub `2004aaron`). Instructor: Mike Ryu. Mentor: Jonathan Hong.
 
-## Current state (v0.3, Sprint 1)
+## Current state (v0.4: Alpha and Beta stories built)
 
-This is the first potentially shippable increment: the pieces of the pipeline that
-the Alpha stories US-01, US-02 and US-11 depend on, rebuilt as a clean package
-with tests. Everything runs on the Python standard library; no install is needed.
+Story IDs follow the final proposal (September 27, 2026). Every acceptance criterion
+has a test; the map is in [`docs/story-map.md`](docs/story-map.md).
 
-| Area | Module | Status |
+| Story | What it does | Module |
 | --- | --- | --- |
-| Account profile: size, margin type, caps, validation, persistence (US-01) | `spx_quant/profile.py` | working, tested |
-| Regime classifier from VIX9D / VIX / VIX3M, `unknown` on missing input (US-02) | `spx_quant/regime.py` | working, tested |
-| Alpha stand-down gate: backwardation, crushed, panic (US-04) | `spx_quant/regime.py` | working, tested; the backwardation rule is tagged *tested, not supported* |
-| Feed probe: shape drift + staleness, refuses stale data (US-11) | `spx_quant/data/cboe.py` | working, tested on recorded payloads |
-| Black-Scholes price, greeks, implied vol | `spx_quant/greeks.py` | working, tested |
-| Delta-matched short strangle with liquidity prefilter and DTE snapping (US-03, partial) | `spx_quant/strategies.py` | candidate selection only; sizing, risk block and logging are Sprint 2 |
-| Tagged parameters: every value carries a validation tag and a source (US-12) | `config/params.toml`, `spx_quant/params.py` | working, tested; untagged parameter fails load |
-| Sizing and delta:theta guardrail (US-05), risk block (US-06), notifications (US-07), append-only log and marks (US-08, US-09), backtest harness (US-10) | not in this repo yet | see the Project board |
+| US-01 account profile | size, margin type, BP cap, delta:theta limit, worst-case limit, notification address; bad input keeps the old profile | `profile.py` |
+| US-02 regime | contango / flat / backwardation and a volatility bucket, with the VIX values and a timestamp; names a missing point | `regime.py` |
+| US-03 sized proposal | four builders (strangle, naked put, put vertical, iron condor) on SPX, falling back to XSP when SPX cannot fit; Reg-T and portfolio margin; inclusive cap; contracts cut so the stress-test worst case stays within the profile's limit (default 5% of net liq); account tiers set the delta:theta default (1:2 under $1M, 1:7 above, in SPY-weighted deltas); ranked by expected annual return on buying power | `strategies.py`, `margin.py`, `sizing.py`, `engine.py` |
+| US-04 stand-down | floor 13, ceiling 28, backwardation; reasons logged | `regime.py`, `engine.py` |
+| US-05 risk block | probability of profit, expected value, worst case (index -10%, volatility +10 points), CVaR 5% / 1%, breakevens, stress rows, implied crash rate, stated assumptions; refuses to default a missing assumption | `analytics.py` |
+| US-06 data check | one fetch per scan, checked for shape, size and quote age before use | `data/cboe.py` |
+| US-07 notifications | email (SMTP/TLS) or Discord webhook, retries, a short NO CHANGE note instead of repeating an unchanged alert, failures recorded | `notify.py`, `alert.py` |
+| US-08 log | SQLite, six append-only tables (scan, alert, delivery, mark, feedback, event), query by date | `store.py`, `pipeline.py` |
+| US-09 daily marks | values every logged proposal at the close as if it had been opened; settles at expiration | `mark.py` |
+| KR scripts | A-KR1, A-KR2 (with planted bad rows), A-KR3 (24 cases), B-KR1 to B-KR3 | `kr.py` |
 
-What the earlier prototype learned, and why the design looks like this, is in
-[`docs/engine-build-notes.md`](docs/engine-build-notes.md). The first validation
-pass against nineteen years of Cboe strategy-index history is in
-[`docs/backtest-findings.md`](docs/backtest-findings.md); its headline result is
-that the regime gate as first implemented shows no edge, which is why refusal,
-sizing and auditability are the product rather than timing.
+Not built yet (RC): reply capture (US-10), weekly report (US-11), failure digest (US-12),
+remaining-buying-power sizing (US-13), stacked vs staggered books (US-14). The
+`feedback` table and the `event` rows they need already exist.
 
 ## Run it
 
-Python 3.11 or newer. No third-party packages.
+Python 3.11 or newer. No third-party packages, no install step.
 
 ```bash
 git clone https://github.com/2004aaron/spx-quant.git
 cd spx-quant
+python -m unittest discover -s tests -t . -v        # 151 tests, about 20 seconds
 
-python -m unittest discover -s tests -v          # 20 tests, under a second
-
-python -m spx_quant profile set --net-liq 150000 --margin portfolio
+python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 --max-worst-case 0.05
 python -m spx_quant profile show
-python -m spx_quant profile set --net-liq -5 --margin portfolio   # rejected, previous profile kept
 
-python -m spx_quant regime      # live VIX term structure -> regime and gate decision
-python -m spx_quant probe       # feed health: shape, freshness, strikes parsed
-python -m spx_quant scan        # probe -> regime -> gate -> candidate strangle
+python -m spx_quant probe             # feed check against the live Cboe board
+python -m spx_quant regime            # VIX term structure -> regime and gate
+python -m spx_quant scan --no-send    # full scan, logged to ~/.spx-quant/quant.db
+python -m spx_quant log --from 2026-10-05
+python -m spx_quant mark              # after the close
+python -m spx_quant kr a3             # A-KR3 sizing matrix
+python -m spx_quant margin-check      # compare engine buying power with one broker ticket
 ```
 
-`regime`, `probe` and `scan` hit Cboe's public delayed-quote CDN (about 15 minutes
-behind, no account needed). Outside regular trading hours the probe reports the
-quotes as stale and `scan` refuses to advise; that is the intended behaviour of
-QR-1, not a bug.
+Global options go before the command: `--profile PATH`, `--db PATH`, `--params PATH`.
+Each pilot user gets their own profile and database.
 
-Example output on a trading day:
+Outside market hours the live feed is stale and `scan` answers NO ADVICE. To see a
+full proposal any time, replay the recorded September 28 close:
 
+```bash
+python -m spx_quant scan --no-send --slot 13:25 \
+  --replay tests/data/cboe-2026-09-28-close.json.gz --now 2026-09-28T20:25:00+00:00
 ```
-probe: OK  latency 940 ms  strikes parsed 30470
-  ok   shape: data.options present (30470 rows)
-  ok   freshness: quotes 16 min old
-SPX 6,512.40  asof 2026-09-23 17:45 UTC  (cboe (delayed ~15 min))
-regime: contango / normal  slope=+0.121  VIX9D=15.10 VIX=16.30 VIX3M=18.27 VIX6M=19.02
-candidate: short strangle 2026-11-06 (44 DTE)  6000P (-0.16) / 6925C (+0.16)  credit $3,410  net delta +0.3
-Parameters: 3 validated, 10 unvalidated, 1 unvalidated: partially supported, 1 unvalidated: tested, not supported
-sizing, risk block and logging are not implemented yet (US-05, US-06, US-08)
-```
+
+The output is in [`docs/sample-alert.txt`](docs/sample-alert.txt). Scheduling, email and
+Discord setup, and the Beta host are in [`docs/operations.md`](docs/operations.md).
 
 ## Layout
 
 ```
 spx_quant/
-  __main__.py      CLI (profile, probe, regime, scan)
-  profile.py       account profile and validation           US-01
-  regime.py        term-structure classifier and gate        US-02, US-04
-  params.py        tagged parameter loader                   US-12
-  greeks.py        Black-Scholes, stdlib math only
-  strategies.py    delta-matched strangle builder            US-03 (partial)
-  data/cboe.py     Cboe delayed-quote source and probe       US-11
-config/params.toml every parameter with tag and source
-tests/             unittest suite; CI runs it on every push
-docs/              build notes and backtest findings from the prototype
+  __main__.py      CLI
+  profile.py       account profile                                US-01
+  regime.py        classifier and stand-down gate                 US-02, US-04
+  data/cboe.py     live feed, replay, freshness check             US-06
+  strategies.py    four structure builders                        US-03
+  margin.py        Reg-T and portfolio-margin buying power        US-03
+  calibrate.py     margin-check: engine vs broker buying power    A-KR2
+  sizing.py        inclusive BP cap, delta:theta guardrail        US-01, US-03
+  analytics.py     risk block                                     US-05
+  engine.py        one scan, pure: returns a ScanResult
+  alert.py         alert id, fingerprint, plain-text message      QR-6, B-KR3
+  store.py         append-only SQLite log                         US-08
+  pipeline.py      scan -> log -> send                            US-07, US-08
+  notify.py        email and Discord delivery                     US-07
+  mark.py          daily marking job                              US-09
+  kr.py            key-result checks                              section 6
+  synthetic.py     synthetic boards for tests and A-KR3
+  clock.py         Eastern/Pacific time and the NYSE calendar without tzdata
+config/params.toml every parameter with a validation tag and a source
+deploy/            Windows Task Scheduler script, crontab for the Beta host
+docs/              build notes, backtest findings, story map, operations, KR results
+tests/             unittest suite; tests/data holds the recorded session
 ```
-
-## Roadmap
-
-Repository milestones: **Alpha** October 19, **Beta** November 16, **RC** December 9,
-2026. Sprint work is tracked on the GitHub Project board linked from the
-repository, one issue per story with size, estimate, priority and dates.
-
-The full proposal (user stories US-01 to US-19, quality requirements, OKRs and the
-evidence behind each parameter) lives in the course deliverables index under
-`students/aawu/`.
 
 ## Scope and disclaimer
 
-Advisory only. No broker write access, no order execution, single user. Outputs are
-model estimates with stated, tagged assumptions; they are not investment advice.
-The historical evidence for regime timing is negative and the forward record is
-short.
+Advisory only. No broker access, no order execution, two pilot users. Outputs are
+model estimates with tagged assumptions, not investment advice. The historical
+evidence for regime timing is negative (see `docs/backtest-findings.md`) and most
+parameters are still tagged unvalidated.
 
 ## License
 

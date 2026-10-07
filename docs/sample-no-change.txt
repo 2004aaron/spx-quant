@@ -1,0 +1,17 @@
+Subject: [SPX Quant 2026-09-28-2026-11-13-2] NO CHANGE: strangle XSP 11/13 x1 still stands
+
+SPX QUANT | NO CHANGE | 2026-09-28-2026-11-13-2
+Output: 2026-09-28 13:25 PT
+Data as of: 2026-09-28 13:14 PT (10 min old, replay cboe-2026-09-28-close.json.gz)
+
+MARKET
+  SPX 7,683.69   VIX9D 14.39   VIX 16.07   VIX3M 18.23   VIX6M 20.25
+  Regime: contango / normal (slope +0.134)
+
+NO CHANGE since 2026-09-28-2026-11-13 (2026-09-28 13:25 PT): same proposal, strangle on XSP x1.
+  SELL 1 XSP261113C00805000  call 805  bid 2.54  ask 2.79  mid 2.67  IV 11.7%  delta +0.165
+  SELL 1 XSP261113P00725000  put 725  bid 4.24  ask 4.49  mid 4.37  IV 18.4%  delta -0.161
+  Credit now $703.00 per lot at mid; worst case -$3,935.
+
+Full detail: python -m spx_quant log --full --from 2026-09-28
+Model estimates with tagged assumptions, not investment advice. The engine never places orders.

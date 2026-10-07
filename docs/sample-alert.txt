@@ -1,0 +1,54 @@
+SPX QUANT | PROPOSAL | 2026-09-28-2026-11-13
+Output: 2026-09-28 13:25 PT
+Data as of: 2026-09-28 13:14 PT (10 min old, replay cboe-2026-09-28-close.json.gz)
+
+MARKET
+  SPX 7,683.69   VIX9D 14.39   VIX 16.07   VIX3M 18.23   VIX6M 20.25
+  Regime: contango / normal (slope +0.134)
+
+PROPOSAL: strangle on XSP, expires 2026-11-13 (46 DTE)
+  SELL 1 XSP261113C00805000  call 805  bid 2.54  ask 2.79  mid 2.67  IV 11.7%  delta +0.165
+  SELL 1 XSP261113P00725000  put 725  bid 4.24  ask 4.49  mid 4.37  IV 18.4%  delta -0.161
+  Credit: $703 total (1 x $703.00 per lot at mid; natural $678.00, far $728.00)
+  Buying power: $6,243.18 of $12,000.00 cap (1 x $6,243.18, portfolio margin)
+  Delta:theta: 1:58.9 within the 1:2 limit (delta -0.37 SPY deltas, theta $21.81/day per lot)
+  Worst-case limit: $3,934.67 of $7,500.00 (5% of net liq; 1 x $3,934.67 stress loss per lot)
+
+RISK (model estimates for 1 lot)
+  Probability of profit: 79.8%
+  Expected value: $59
+  Expected annual return on buying power: 7.6%
+  Worst case (stress: index -10%, volatility +10 points): -$3,935 = 3% of net liquidation
+  Average of the worst 5% (CVaR 5%): -$5,846
+  Average of the worst 1% (CVaR 1%): -$9,440
+  Max profit: $703
+  Max loss: unlimited (naked short option)
+  Breakevens at expiration: 717.97 / 812.03
+  Stress, instant index move: -20% -$9,970 | -10% -$2,998 | -5% -$801 | +5% -$1,030 | +10% -$3,891
+  Implied crash rate: 0.121 per year (the crash frequency this premium pays for, before any volatility risk premium)
+
+ASSUMPTIONS
+  Model estimates, held to expiration, settled at intrinsic value. Index lognormal at realized
+  vol 12.5% (ATM IV 13.9% less a 10% volatility risk premium), drift 4.0%/yr, plus a -15% crash
+  arriving 0.25 times per year. Worst case is a stress test: index -10% at once with volatility
+  up 10 points. Input tags: vrp_haircut unvalidated, crash_prob_annual unvalidated, crash_size
+  unvalidated, rate unvalidated, worst_case_move unvalidated, worst_case_vol_points unvalidated.
+
+RANKING (expected annual return on buying power; best first)
+  1. strangle XSP 11/13 -805C -725P x1: 7.6%/yr on BP, EV $59, POP 80%, worst case -$3,935
+  Ranked first because it has the highest expected annual return on buying power (7.6%).
+
+CONSIDERED, NOT PROPOSED
+  - strangle SPX 11/13 -8050C -7250P: worst case $39,359.86 per lot is over the $7,500.00 limit (5% of $150,000); needs $62,456.41 of buying power per lot; cap is $12,000.00 (8% of $150,000, portfolio)
+  - naked put SPX 11/13 -7250P: worst case $41,453.85 per lot is over the $7,500.00 limit (5% of $150,000); needs $65,173.75 of buying power per lot; cap is $12,000.00 (8% of $150,000, portfolio); delta:theta 1:0.7 breaks the 1:2 limit (delta +160.60 SPY deltas, theta $118.24/day per lot)
+  - iron condor SPX 11/13 -8050C +8100C +7200P -7250P: delta:theta 1:1.1 breaks the 1:2 limit (delta -19.00 SPY deltas, theta $21.25/day per lot)
+  - put vertical SPX 11/13 +7375P -7425P: delta:theta 1:0.1 breaks the 1:2 limit (delta +27.50 SPY deltas, theta $2.86/day per lot)
+  - naked put XSP 11/13 -725P: delta:theta 1:0.7 breaks the 1:2 limit (delta +16.08 SPY deltas, theta $11.84/day per lot)
+  - iron condor XSP 11/13 -805C +810C +720P -725P: delta:theta 1:1.1 breaks the 1:2 limit (delta -1.91 SPY deltas, theta $2.18/day per lot)
+  - put vertical XSP 11/13 +740P -745P: delta:theta 1:0.1 breaks the 1:2 limit (delta +2.89 SPY deltas, theta $0.20/day per lot)
+
+NOTES
+  - SPX could not be sized for this account; using XSP
+
+Parameters: 47 unvalidated, 2 unvalidated: partially supported, 1 unvalidated: tested, not supported, 3 validated
+Model estimates with tagged assumptions, not investment advice. The engine never places orders.

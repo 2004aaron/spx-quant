@@ -1,23 +1,42 @@
 # Every parameter below must have a matching [provenance."section.key"] entry with a
 # tag from {validated, unvalidated, "unvalidated: tested, not supported",
-# "unvalidated: partially supported"} and a source. Loading fails otherwise (US-12).
+# "unvalidated: partially supported"} and a source. Loading fails otherwise.
+# The account profile (size, margin type, caps, notification address) is NOT here:
+# it lives in a local file that is never committed (QR-5).
 
 [regime]
 contango_slope = 0.05
 backwardation_slope = -0.01
 
 [vol_buckets]
-crushed_below = 13.0
+crushed_below = 13.0     # volatility floor (US-04-AC2)
 low_below = 16.0
 normal_below = 20.0
-elevated_below = 28.0
+elevated_below = 28.0    # volatility ceiling (US-04-AC1)
 
-[strangle]
-target_delta = 0.16
+[playbook]
+low = ["strangle", "naked_put", "iron_condor", "put_vertical"]
+normal = ["strangle", "naked_put", "iron_condor", "put_vertical"]
+elevated = ["strangle", "naked_put", "iron_condor", "put_vertical"]
+
+[expiry]
 target_dte = 45
 dte_min = 30
 dte_max = 60
-profit_target = 0.50
+
+[strangle]
+target_delta = 0.16
+
+[naked_put]
+target_delta = 0.16
+
+[put_vertical]
+short_delta = 0.25
+width_pct = 0.0075
+
+[iron_condor]
+short_delta = 0.16
+width_pct = 0.0075
 
 [liquidity]
 min_open_interest = 50
@@ -25,9 +44,48 @@ min_volume = 25
 max_spread_pct = 0.25
 min_mid = 0.30
 
+[margin]
+regt_index_pct = 0.15
+regt_min_pct = 0.10
+pm_down = -0.15
+pm_up = 0.10
+pm_points = 10
+pm_min_per_contract = 37.50
+pm_house_multiplier = 1.0
+
+[risk]
+vrp_haircut = 0.10
+crash_prob_annual = 0.25
+crash_size = -0.15
+rate = 0.04
+min_pop = 0.60
+worst_case_move = -0.10
+worst_case_vol_points = 10.0
+stress_moves = [-0.20, -0.10, -0.05, 0.05, 0.10]
+grid_points = 2001
+
+[management]
+profit_target = 0.50
+loss_multiple = 2.0
+defensive_dte = 21
+tested_delta = 0.30
+
 [feed]
 stale_after_minutes = 30
 timeout_seconds = 30
+min_rows = 1000
+tickers = ["_SPX", "_XSP"]
+
+[schedule]
+slots = ["10:30", "13:25"]
+eod_slot = "13:25"
+mark_time = "13:45"
+
+[notify]
+repeat_policy = "brief"
+max_attempts = 3
+retry_wait_seconds = 5
+latency_target_minutes = 20
 
 [provenance]
 "regime.contango_slope" = { tag = "unvalidated", source = "mentor framework, Aug 2026 call" }
@@ -35,15 +93,51 @@ timeout_seconds = 30
 "vol_buckets.crushed_below" = { tag = "unvalidated: partially supported", source = "backtest-findings Tier A table 4: right sign, not significant" }
 "vol_buckets.low_below" = { tag = "unvalidated", source = "mentor framework" }
 "vol_buckets.normal_below" = { tag = "unvalidated", source = "mentor framework" }
-"vol_buckets.elevated_below" = { tag = "unvalidated", source = "mentor framework" }
+"vol_buckets.elevated_below" = { tag = "unvalidated", source = "mentor framework; proposal US-04 ceiling 28" }
+"playbook.low" = { tag = "unvalidated", source = "proposal US-04: only VIX below the 13 floor stands down; per-bucket restrictions pending mentor" }
+"playbook.normal" = { tag = "unvalidated", source = "proposal US-04: every built strategy allowed between floor and ceiling; pending mentor" }
+"playbook.elevated" = { tag = "unvalidated", source = "proposal US-04: every built strategy allowed between floor and ceiling; pending mentor" }
+"expiry.target_dte" = { tag = "validated", source = "backtest-findings Tier B part A: 45 DTE 32.0% return on credit vs 28.9% (30) and 27.0% (60)" }
+"expiry.dte_min" = { tag = "unvalidated", source = "mentor framework, 30-60 DTE window" }
+"expiry.dte_max" = { tag = "unvalidated", source = "mentor framework, 30-60 DTE window" }
 "strangle.target_delta" = { tag = "unvalidated: partially supported", source = "backtest-findings Tier B part A: 10-delta better risk-adjusted on SPY 2019-2026" }
-"strangle.target_dte" = { tag = "validated", source = "backtest-findings Tier B part A: 45 DTE 32.0% return on credit vs 28.9% (30) and 27.0% (60)" }
-"strangle.dte_min" = { tag = "unvalidated", source = "mentor framework, 30-60 DTE window" }
-"strangle.dte_max" = { tag = "unvalidated", source = "mentor framework, 30-60 DTE window" }
-"strangle.profit_target" = { tag = "validated", source = "backtest-findings Tier B part B: 50% target keeps 84% of return, 5th pct loss -1816 to -634" }
+"naked_put.target_delta" = { tag = "unvalidated", source = "same 16-delta default as the strangle" }
+"put_vertical.short_delta" = { tag = "unvalidated", source = "operational default" }
+"put_vertical.width_pct" = { tag = "unvalidated", source = "operational default: about 50 SPX points at 6,600" }
+"iron_condor.short_delta" = { tag = "unvalidated", source = "same 16-delta default as the strangle" }
+"iron_condor.width_pct" = { tag = "unvalidated", source = "operational default" }
 "liquidity.min_open_interest" = { tag = "unvalidated", source = "engine-build-notes: prefilter before delta selection" }
 "liquidity.min_volume" = { tag = "unvalidated", source = "engine-build-notes: accept OI or volume, delayed feed carries prior-session OI" }
 "liquidity.max_spread_pct" = { tag = "unvalidated", source = "engine-build-notes" }
 "liquidity.min_mid" = { tag = "unvalidated", source = "engine-build-notes" }
+"margin.regt_index_pct" = { tag = "unvalidated", source = "Cboe Margin Manual, broad-based index short options: 15% of index value less OTM amount" }
+"margin.regt_min_pct" = { tag = "unvalidated", source = "Cboe Margin Manual: minimum 10% of index value (calls) or strike (puts)" }
+"margin.pm_down" = { tag = "unvalidated", source = "tastytrade, What is Portfolio Margin: minimum -15% stress for equity-based indices (regulatory floor is -8%)" }
+"margin.pm_up" = { tag = "unvalidated", source = "tastytrade, What is Portfolio Margin: minimum +10% stress for equity-based indices (regulatory floor is +6%)" }
+"margin.pm_points" = { tag = "unvalidated", source = "FINRA Rule 4210(g): ten equidistant valuation points" }
+"margin.pm_min_per_contract" = { tag = "unvalidated", source = "FINRA Rule 4210(g): $0.375 x multiplier per contract" }
+"margin.pm_house_multiplier" = { tag = "unvalidated", source = "set to broker BP / engine BP after one tastytrade ticket check (python -m spx_quant margin-check); 1.0 until then" }
+"risk.vrp_haircut" = { tag = "unvalidated", source = "engine-build-notes finding 5: realized vol below implied; placeholder pending mentor" }
+"risk.crash_prob_annual" = { tag = "unvalidated", source = "engine-build-notes finding 5: post-1987 record roughly 0.15-0.5 per year" }
+"risk.crash_size" = { tag = "unvalidated", source = "placeholder: one-day gap size used for the crash branch" }
+"risk.rate" = { tag = "unvalidated", source = "operational default near the T-bill rate" }
+"risk.worst_case_move" = { tag = "unvalidated", source = "user flow diagram screen 8: worst case = index down 10%, volatility up 10 points" }
+"risk.worst_case_vol_points" = { tag = "unvalidated", source = "user flow diagram screen 8: worst case = index down 10%, volatility up 10 points" }
+"risk.min_pop" = { tag = "unvalidated", source = "proposal 2.4: stand down when the chance of losing exceeds a threshold" }
+"risk.stress_moves" = { tag = "unvalidated", source = "operational default stress grid" }
+"risk.grid_points" = { tag = "unvalidated", source = "numerical resolution of the terminal distribution" }
+"management.profit_target" = { tag = "validated", source = "backtest-findings Tier B part B: 50% target keeps 84% of return, 5th pct loss -1816 to -634" }
+"management.loss_multiple" = { tag = "unvalidated", source = "engine-build-notes: 2x stop default; same rule as shadow-runner (cost to close >= 2x credit)" }
+"management.defensive_dte" = { tag = "unvalidated", source = "engine-build-notes: 21 DTE exit default" }
+"management.tested_delta" = { tag = "unvalidated", source = "shadow-runner: strike tested at 30 delta" }
 "feed.stale_after_minutes" = { tag = "validated", source = "proposal QR-1: Cboe feed is ~15 min delayed, 30 min means a failed refresh" }
 "feed.timeout_seconds" = { tag = "unvalidated", source = "operational default" }
+"feed.min_rows" = { tag = "unvalidated", source = "US-06-AC1 expected size: live SPX board ~29k rows, XSP ~17k; under 1,000 means a truncated payload" }
+"feed.tickers" = { tag = "unvalidated", source = "engine-build-notes finding 1: XSP is 1/10 SPX notional for accounts SPX cannot fit" }
+"schedule.slots" = { tag = "unvalidated", source = "proposal A-KR1: 10:30 PT scan and an end-of-day scan after the 13:15 PT SPX close" }
+"schedule.eod_slot" = { tag = "unvalidated", source = "proposal A-KR2: end-of-day proposals are checked against the next 10:30 scan" }
+"schedule.mark_time" = { tag = "unvalidated", source = "user flow diagram screen 3: mark job 1:45 PM PT" }
+"notify.repeat_policy" = { tag = "unvalidated", source = "Aaron 2026-09-28: send a short no-change message (B-KR2) instead of silence; see docs/operations.md" }
+"notify.max_attempts" = { tag = "unvalidated", source = "US-07-AC3 retry" }
+"notify.retry_wait_seconds" = { tag = "unvalidated", source = "operational default" }
+"notify.latency_target_minutes" = { tag = "unvalidated", source = "requirement, not evidence: proposal US-07-AC1 and QR-2" }

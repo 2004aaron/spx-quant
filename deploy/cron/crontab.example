@@ -1,0 +1,19 @@
+# SPX Quant on the Beta host (proposal 4.5). Install with: crontab deploy/cron/crontab.example
+# after editing paths. Cron uses the server clock, so set it to Pacific first:
+#   sudo timedatectl set-timezone America/Los_Angeles
+# Needs Python 3.11+ (tomllib); Ubuntu 22.04's python3 is 3.10, hence python3.11 below.
+# Credentials are host environment variables set here, in the crontab, not in the repo.
+SHELL=/bin/bash
+SPX_QUANT_SMTP_HOST=smtp.gmail.com
+SPX_QUANT_SMTP_PORT=587
+SPX_QUANT_SMTP_USER=change-me@gmail.com
+SPX_QUANT_SMTP_PASSWORD=app-password-here
+# SPX_QUANT_DISCORD_WEBHOOK=https://discord.com/api/webhooks/...
+
+# pilot user 1
+30 10 * * 1-5  cd $HOME/spx-quant && python3.11 -m spx_quant --profile $HOME/.spx-quant/aaron.json --db $HOME/.spx-quant/aaron.db scan --slot 10:30 >> $HOME/.spx-quant/cron.log 2>&1
+25 13 * * 1-5  cd $HOME/spx-quant && python3.11 -m spx_quant --profile $HOME/.spx-quant/aaron.json --db $HOME/.spx-quant/aaron.db scan --slot 13:25 >> $HOME/.spx-quant/cron.log 2>&1
+45 13 * * 1-5  cd $HOME/spx-quant && python3.11 -m spx_quant --profile $HOME/.spx-quant/aaron.json --db $HOME/.spx-quant/aaron.db mark >> $HOME/.spx-quant/cron.log 2>&1
+
+# pilot user 2: same three lines with its own profile and database
+# 30 10 * * 1-5  cd $HOME/spx-quant && python3.11 -m spx_quant --profile $HOME/.spx-quant/mentor.json --db $HOME/.spx-quant/mentor.db scan --slot 10:30 >> $HOME/.spx-quant/cron.log 2>&1
