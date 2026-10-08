@@ -81,7 +81,8 @@ def _no_advice(res: ScanResult, outcome: str, reasons: list[str], code: str) -> 
     return res
 
 
-def evaluate(chain: cboe.Chain, profile: Profile, strategies: list[str], now: datetime, params: Params) -> list[Candidate]:
+def evaluate(chain: cboe.Chain, profile: Profile, strategies: list[str], now: datetime, params: Params,
+             available: float | None = None) -> list[Candidate]:
     today = clock.market_date(now)
     rate = params.need("risk", "rate")
     out = []
@@ -92,7 +93,7 @@ def evaluate(chain: cboe.Chain, profile: Profile, strategies: list[str], now: da
         bp = margin.bp_per_lot(pos, chain.spot, profile.margin_type, now, params)
         theta = pos.theta(chain.spot, now, rate)
         worst = analytics.stress_loss_per_lot(pos, chain.spot, now, params)
-        sz = sizing.size(profile, bp, pos.net_delta, theta, worst)
+        sz = sizing.size(profile, bp, pos.net_delta, theta, worst, available)
         cand = Candidate(pos, sz, reasons=list(sz.reasons), codes=list(sz.codes))
         if sz.ok:
             iv = analytics.atm_iv(chain.rows, pos.root, pos.exp, chain.spot)
@@ -112,9 +113,17 @@ def evaluate(chain: cboe.Chain, profile: Profile, strategies: list[str], now: da
     return out
 
 
-def run_scan(source, profile: Profile, params: Params, now: datetime | None = None) -> ScanResult:
+def run_scan(source, profile: Profile, params: Params, now: datetime | None = None, held: list | None = None) -> ScanResult:
+    """held: positions already taken and still open (decisions.held); their buying power is
+    subtracted from net liquidation before sizing (US-13)."""
     now = now or source.now()
     res = ScanResult("error", now, source=getattr(source, "name", ""), params_summary=params.summary(), profile=profile)
+    available = None
+    if held:
+        available = round(profile.net_liq - sum(h.bp for h in held), 2)
+        res.notes.append(f"remaining buying power {sizing.usd(max(available, 0))} of {sizing.usd(profile.net_liq)} net liq "
+                         f"after {len(held)} open position{'' if len(held) == 1 else 's'}: "
+                         + ", ".join(f"{h.alert_id} x{h.contracts} ({sizing.usd(h.bp)})" for h in held))
     day = clock.market_date(now)
     if not clock.trading_day(day):
         res.outcome, res.kind = "market_closed", None
@@ -153,7 +162,7 @@ def run_scan(source, profile: Profile, params: Params, now: datetime | None = No
         return _no_advice(res, "error", [f"playbook names unknown strategies: {', '.join(unknown)}"], "config")
 
     try:
-        cands = evaluate(chain, profile, allowed, now, params)
+        cands = evaluate(chain, profile, allowed, now, params, available)
         for t in tickers[1:]:
             if any(c.ok for c in cands):
                 break
@@ -162,7 +171,7 @@ def run_scan(source, profile: Profile, params: Params, now: datetime | None = No
                 res.notes.append(f"{t} unavailable: {'; '.join(p2.failures)}")
                 continue
             res.boards[extra.ticker] = {r["sym"]: r for r in extra.rows}
-            cands += evaluate(extra, profile, allowed, now, params)
+            cands += evaluate(extra, profile, allowed, now, params, available)
     except MissingParam as e:
         return _no_advice(res, "error", [f"risk block cannot be computed: {e}"], "missing_param")
 
@@ -177,8 +186,14 @@ def run_scan(source, profile: Profile, params: Params, now: datetime | None = No
         return res
 
     res.outcome, res.kind = "stand_down", "stand_down"
+    short = [c for c in cands if "over_available" in c.codes]
     if not cands:
         res.reasons, res.codes = ["no candidate could be built from liquid strikes in the DTE window"], ["no_candidates"]
+    elif short and all(set(c.codes) & {"over_available", "over_cap", "delta_theta", "theta", "bp_unknown", "over_worst_case"}
+                       for c in cands):
+        need = min(c.sized.bp_per_lot for c in short)
+        res.reasons = [f"insufficient buying power: {sizing.usd(max(available, 0))} available, {sizing.usd(need)} needed"]
+        res.codes = ["insufficient_bp"]
     elif all(set(c.codes) & {"over_cap", "delta_theta", "theta", "bp_unknown", "over_worst_case"} for c in cands):
         res.reasons = [f"no proposal could be sized for this account ({profile.margin_type}, "
                        f"${profile.bp_cap_dollars:,.0f} per-position cap, delta:theta 1:{profile.delta_theta_limit:g}, "

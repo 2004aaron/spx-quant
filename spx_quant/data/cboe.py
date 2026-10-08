@@ -14,6 +14,7 @@ import json
 import re
 import ssl
 import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -29,10 +30,29 @@ REQUIRED_OPTION_FIELDS = ("option", "bid", "ask", "iv", "delta", "open_interest"
 MULTIPLIER = 100
 
 
+RETRY_STATUS = {429, 500, 502, 503, 504}
+RETRY_WAITS = (2, 5, 10)     # seconds; the CDN rate-limits bursts (HTTP 429), seen live on 2026-10-08
+_sleep = time.sleep
+
+
 def fetch_json(url: str, timeout: float = 30) -> dict:
-    req = urllib.request.Request(url, headers={"User-Agent": "spx-quant/0.4"})
-    with urllib.request.urlopen(req, timeout=timeout, context=ssl.create_default_context()) as r:
-        return json.load(r)
+    """GET a CDN payload, retrying rate limits, server errors and network drops up to three
+    times (honoring Retry-After up to 15 seconds). Anything else fails at once."""
+    req = urllib.request.Request(url, headers={"User-Agent": "spx-quant/0.5"})
+    for wait in (*RETRY_WAITS, None):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout, context=ssl.create_default_context()) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            if e.code not in RETRY_STATUS or wait is None:
+                raise
+            after = e.headers.get("Retry-After") if e.headers else None
+            if after and after.strip().isdigit():
+                wait = min(max(int(after), wait), 15)
+        except (urllib.error.URLError, TimeoutError):
+            if wait is None:
+                raise
+        _sleep(wait)
 
 
 class LiveSource:

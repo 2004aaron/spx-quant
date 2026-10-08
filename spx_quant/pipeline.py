@@ -10,7 +10,7 @@ import traceback
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 
-from . import clock, notify, store
+from . import clock, decisions, notify, store
 from .data import cboe
 from .alert import alert_id, fingerprint, render, render_unchanged
 from .engine import ScanResult, run_scan
@@ -85,7 +85,7 @@ def scan(conn, source, profile: Profile, params: Params, slot: str | None = None
     started = source.now()
     label, slot_ts = slot_time(slot, started)
     try:
-        res = run_scan(source, profile, params, started)
+        res = run_scan(source, profile, params, started, held=decisions.held(conn, started))
     except Exception as e:
         finished = source.now()
         store.insert(conn, "scan", slot=label, slot_ts=slot_ts, started_ts=started, finished_ts=finished,

@@ -96,3 +96,41 @@ class ReplayTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RetryTest(unittest.TestCase):
+    def test_rate_limits_are_retried_then_succeed(self):
+        import io
+        import urllib.error
+        from unittest import mock
+        from spx_quant.data import cboe
+        calls, waits = [], []
+
+        def fake(req, timeout=None, context=None):
+            calls.append(req.full_url)
+            if len(calls) < 3:
+                raise urllib.error.HTTPError(req.full_url, 429, "Too Many Requests", {}, None)
+            return io.BytesIO(b'{"data": {"current_price": 16.2}}')
+        with mock.patch("urllib.request.urlopen", fake), mock.patch.object(cboe, "_sleep", waits.append):
+            self.assertEqual(cboe.fetch_json("https://x/quotes/_VIX.json")["data"]["current_price"], 16.2)
+        self.assertEqual((len(calls), waits), (3, [2, 5]))
+
+    def test_gives_up_after_three_retries_and_does_not_retry_a_404(self):
+        import urllib.error
+        from unittest import mock
+        from spx_quant.data import cboe
+        waits = []
+
+        def always(code):
+            def f(req, timeout=None, context=None):
+                raise urllib.error.HTTPError(req.full_url, code, "x", {}, None)
+            return f
+        with mock.patch("urllib.request.urlopen", always(429)), mock.patch.object(cboe, "_sleep", waits.append):
+            with self.assertRaises(urllib.error.HTTPError):
+                cboe.fetch_json("https://x")
+        self.assertEqual(waits, [2, 5, 10])
+        waits.clear()
+        with mock.patch("urllib.request.urlopen", always(404)), mock.patch.object(cboe, "_sleep", waits.append):
+            with self.assertRaises(urllib.error.HTTPError):
+                cboe.fetch_json("https://x")
+        self.assertEqual(waits, [])

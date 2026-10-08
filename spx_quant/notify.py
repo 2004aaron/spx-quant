@@ -4,6 +4,8 @@ Credentials come from environment variables, never files (proposal 4.5):
   email   SPX_QUANT_SMTP_HOST, SPX_QUANT_SMTP_PORT (587 STARTTLS or 465 SSL),
           SPX_QUANT_SMTP_USER, SPX_QUANT_SMTP_PASSWORD, SPX_QUANT_SMTP_FROM (defaults to USER)
   discord SPX_QUANT_DISCORD_WEBHOOK
+  gmail   nothing: the alert is queued in the log and the scheduled task sends it through its
+          Gmail connector, then records the result (see outbox.py)
 The recipient address lives in the account profile. Every attempt is one delivery
 row; a final failure is also an event, so the report can list it (US-07-AC3, US-12).
 """
@@ -107,6 +109,9 @@ def deliver(conn, alert: dict, finished_ts: datetime, profile: Profile, params, 
         store.insert(conn, "delivery", alert_id=aid, channel=profile.notify_channel, attempt=0, status="failed", error=str(e))
         store.event(conn, now(), "delivery_failed", f"{profile.notify_channel}: {e}", aid)
         return "failed"
+    if channel is None and profile.notify_channel == "gmail":
+        store.insert(conn, "delivery", alert_id=aid, channel="gmail", attempt=0, status="queued", error=None)
+        return "queued"
     if channel is None:
         store.insert(conn, "delivery", alert_id=aid, channel="none", attempt=0, status="no_channel", error=None)
         return "no_channel"
