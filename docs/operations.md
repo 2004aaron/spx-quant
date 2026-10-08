@@ -21,13 +21,24 @@ accepts any board updated within 20 minutes of that day's close, so it still run
 
 ## Cloud schedule (from October 8, 2026)
 
-Two weekday cloud scheduled tasks run the A-KR1 scans so the laptop does not have to
-be on:
+Cloud scheduled tasks run the scans so the laptop does not have to be on:
 
 | Task | Time (PT) | Steps |
 | --- | --- | --- |
-| SPX Quant 10:30 scan | 10:30 | clone `main`, load the log, `scan --slot 10:30`, save the log |
-| SPX Quant end-of-day scan + mark | 13:25 | clone `main`, load the log, `scan --slot 13:25`, `mark`, save the log, `kr a1` |
+| SPX Quant 10:30 scan | weekdays 10:30 | clone `main`, load the log, `scan --slot 10:30`, send the outbox through Gmail and record each send, save the log |
+| SPX Quant end-of-day scan and mark | weekdays 13:25 | same, with `scan --slot 13:25`, then record decisions from email replies, `mark`, save the log, `kr a1` |
+| SPX Quant weekly report | Fridays 13:50 | clone `main`, load the log, `report`, email it (read-only; the log is not changed) |
+
+Alerts go out through the task's Gmail connector (channel `gmail`): the scan queues
+the message in the log, `outbox` lists what is queued, and `delivered ID --ref MSG`
+records the send so B-KR1 can time it. A failed send is recorded with
+`delivered ID --failed ERROR`; after three failures the alert leaves the outbox and a
+`delivery_failed` event goes into the weekly report. No password or webhook is stored.
+
+Decisions come back as email replies. Reply to an alert with ACCEPTED, DECLINED,
+MODIFIED <contracts> or (later) CLOSED as the first word; the end-of-day task finds
+the reply and runs `reply ID "<text>" --ref <reply id>`, which never counts the same
+reply twice. `decide` does the same from the command line.
 
 Each run starts in an empty container, so the log lives between runs as the project
 document `claude/quant-log.sql`: a SQL dump that ends with a sha256 line.
@@ -65,6 +76,7 @@ Credentials are environment variables, never files in the repo (QR-5).
 | --- | --- | --- |
 | email | `SPX_QUANT_SMTP_HOST`, `SPX_QUANT_SMTP_PORT` (587 STARTTLS, 465 SSL), `SPX_QUANT_SMTP_USER`, `SPX_QUANT_SMTP_PASSWORD`, optional `SPX_QUANT_SMTP_FROM` | Gmail needs an app password (Google Account, Security, App passwords) |
 | discord | `SPX_QUANT_DISCORD_WEBHOOK` | channel settings, Integrations, Webhooks, New Webhook, copy URL |
+| gmail | none | queued in the log and sent by the cloud task's Gmail connector (`outbox`, `delivered`) |
 
 `python -m spx_quant notify-test` sends one message on the profile's channel. The user
 flow diagram shows email as the default and Discord as the alternative; confirm with
@@ -100,7 +112,16 @@ python -m spx_quant kr a3 > docs/results/a-kr3.md
 python -m spx_quant kr b1                    # Oct 30 - Nov 13 by default
 python -m spx_quant kr b2
 python -m spx_quant kr b3
+python -m spx_quant kr rc1                   # Oct 5 - Dec 8: proposals that reached their worst case
+python -m spx_quant kr rc2 --broker marks.csv  # engine marks vs your tastytrade marks
+python -m spx_quant kr rc3                   # decisions on delivered proposals
+python -m spx_quant kr s1                    # proposals over remaining buying power
+python -m spx_quant report --end 2026-10-16  # the weekly report for any week
 ```
+
+RC-KR2 needs the broker's numbers, which only you can see: for positions you took,
+write the P/L tastytrade shows at the close into a CSV with the columns
+`alert_id,market_date,broker_pnl`, one row per position per day you record.
 
 Each prints a markdown table. Commit the output. The exit code is 0 only when the
 target is met.

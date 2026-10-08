@@ -25,11 +25,12 @@ SCHEMA = {
                 delta_per_lot REAL, theta_per_lot REAL, risk TEXT, reasons TEXT, codes TEXT, quotes TEXT,
                 profile TEXT, candidates TEXT, fingerprint TEXT, repeat_of TEXT, subject TEXT, text TEXT""",
     "delivery": """alert_id TEXT NOT NULL, channel TEXT, attempt INTEGER, sent_ts TEXT, delivered_ts TEXT,
-                   status TEXT NOT NULL, error TEXT""",
+                   status TEXT NOT NULL, error TEXT, ref TEXT""",
     "mark": """alert_id TEXT NOT NULL, market_date TEXT NOT NULL, ts TEXT, dte INTEGER, spot REAL, mid REAL,
                pnl REAL, pnl_pct_credit REAL, settled INTEGER NOT NULL DEFAULT 0, exit_signal TEXT,
                basis TEXT, legs TEXT""",
-    "feedback": """alert_id TEXT NOT NULL, received_ts TEXT, decision TEXT, reason TEXT""",
+    "feedback": """alert_id TEXT NOT NULL, received_ts TEXT, decision TEXT, reason TEXT, contracts INTEGER,
+                   source TEXT, ref TEXT""",
     "event": """ts TEXT NOT NULL, kind TEXT NOT NULL, detail TEXT, alert_id TEXT""",
 }
 JSON_COLS = {"detail", "leg_quotes", "regime", "legs", "risk", "reasons", "codes", "quotes", "profile", "candidates"}
@@ -52,6 +53,10 @@ def connect(path: Path | str = DEFAULT_PATH) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     for table, cols in SCHEMA.items():
         conn.execute(f"CREATE TABLE IF NOT EXISTS {table} (id INTEGER PRIMARY KEY AUTOINCREMENT, {cols})")
+        have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for col in (c.strip() for c in cols.split(",")):
+            if col.split()[0] not in have:   # a log written by an older version gains the new columns
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col}")
         for op in ("UPDATE", "DELETE"):
             conn.execute(f"""CREATE TRIGGER IF NOT EXISTS {table}_no_{op.lower()} BEFORE {op} ON {table}
                              BEGIN SELECT RAISE(ABORT, '{table} is append-only'); END""")

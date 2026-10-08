@@ -9,7 +9,7 @@ profile, and either sends a specific proposal with its risk numbers or says
 Westmont College CS 195 Senior Seminar capstone, Fall 2026. Student: Aaron Wu
 (`aawu`, GitHub `2004aaron`). Instructor: Mike Ryu. Mentor: Jonathan Hong.
 
-## Current state (v0.4: Alpha and Beta stories built)
+## Current state (v0.5: core stories US-01 to US-12 and stretch US-13 built)
 
 Story IDs follow the final proposal (September 27, 2026). Every acceptance criterion
 has a test; the map is in [`docs/story-map.md`](docs/story-map.md).
@@ -22,14 +22,16 @@ has a test; the map is in [`docs/story-map.md`](docs/story-map.md).
 | US-04 stand-down | floor 13, ceiling 28, backwardation; reasons logged | `regime.py`, `engine.py` |
 | US-05 risk block | probability of profit, expected value, worst case (index -10%, volatility +10 points), CVaR 5% / 1%, breakevens, stress rows, implied crash rate, stated assumptions; refuses to default a missing assumption | `analytics.py` |
 | US-06 data check | one fetch per scan, checked for shape, size and quote age before use | `data/cboe.py` |
-| US-07 notifications | email (SMTP/TLS) or Discord webhook, retries, a short NO CHANGE note instead of repeating an unchanged alert, failures recorded | `notify.py`, `alert.py` |
+| US-07 notifications | email (SMTP/TLS), Discord webhook, or Gmail through the cloud task's connector (queued, then recorded); retries, a short NO CHANGE note instead of repeating an unchanged alert, failures recorded | `notify.py`, `outbox.py`, `alert.py` |
 | US-08 log | SQLite, six append-only tables (scan, alert, delivery, mark, feedback, event), query by date | `store.py`, `pipeline.py` |
 | US-09 daily marks | values every logged proposal at the close as if it had been opened; settles at expiration | `mark.py` |
-| KR scripts | A-KR1, A-KR2 (with planted bad rows), A-KR3 (24 cases), B-KR1 to B-KR3 | `kr.py` |
+| US-10 decisions | accepted / declined / modified N / closed per proposal, from the CLI or an email reply; unknown IDs rejected; a reply is never counted twice | `decisions.py` |
+| US-11 weekly report | advisor book against yours, cumulative P/L, every position, worst case predicted against realized; built only from the log, so it regenerates identically | `report.py` |
+| US-12 failures | every stale-data scan, missed slot, failed or late delivery and skipped mark in the week, or a plain statement that nothing failed | `report.py` |
+| US-13 remaining buying power (stretch) | net liq minus what taken positions hold; sizes down or stands down with "insufficient buying power" | `decisions.py`, `sizing.py`, `engine.py` |
+| KR scripts | A-KR1, A-KR2 (with planted bad rows), A-KR3 (24 cases), B-KR1 to B-KR3, RC-KR1 to RC-KR3, S-KR1 | `kr.py` |
 
-Not built yet (RC): reply capture (US-10), weekly report (US-11), failure digest (US-12),
-remaining-buying-power sizing (US-13), stacked vs staggered books (US-14). The
-`feedback` table and the `event` rows they need already exist.
+Not built yet: stacked vs staggered books (US-14, stretch) and its S-KR2 comparison.
 
 ## Run it
 
@@ -38,7 +40,7 @@ Python 3.11 or newer. No third-party packages, no install step.
 ```bash
 git clone https://github.com/2004aaron/spx-quant.git
 cd spx-quant
-python -m unittest discover -s tests -t . -v        # 153 tests, about 20 seconds
+python -m unittest discover -s tests -t . -v        # 184 tests, about 30 seconds
 
 python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 --max-worst-case 0.05
 python -m spx_quant profile show
@@ -50,6 +52,9 @@ python -m spx_quant log --from 2026-10-05
 python -m spx_quant mark              # after the close
 python -m spx_quant kr a3             # A-KR3 sizing matrix
 python -m spx_quant margin-check      # compare engine buying power with one broker ticket
+python -m spx_quant decide <alert-id> accepted   # or declined / modified --contracts N / closed
+python -m spx_quant show <alert-id>   # an alert with its deliveries, decisions and marks
+python -m spx_quant report            # this week's report
 ```
 
 Global options go before the command: `--profile PATH`, `--db PATH`, `--params PATH`.

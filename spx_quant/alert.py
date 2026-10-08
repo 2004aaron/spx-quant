@@ -83,6 +83,10 @@ def _header(res: ScanResult, title: str, aid: str, created_ts: datetime) -> list
     return lines + (["", "MARKET"] + mk if mk else [])
 
 
+REPLY_LINE = ("To record your decision, reply with ACCEPTED, DECLINED or MODIFIED <contracts> as the first word "
+              "(for example: modified 1). Later, reply CLOSED if you exit early.")
+
+
 def render_unchanged(res: ScanResult, aid: str, created_ts: datetime, prev: dict) -> tuple[str, str]:
     """Short message for a scan that repeats the last delivered decision. It still carries the
     quotes and both timestamps (B-KR3); the full detail stays in the log under this alert ID."""
@@ -95,6 +99,7 @@ def render_unchanged(res: ScanResult, aid: str, created_ts: datetime, prev: dict
         lines.append(f"NO CHANGE since {since}: same proposal, {p.label()} on {p.ticker.lstrip('_')} x{s.contracts}.")
         lines += [_leg_line(c, l) for l in sorted(p.legs, key=lambda l: (l.right, l.strike))]
         lines.append(f"  Credit now ${p.credit:,.2f} per lot at mid; worst case {_money(c.risk.worst_case)}.")
+        lines += ["", REPLY_LINE]
     else:
         what = "still STAND DOWN" if res.kind == "stand_down" else "still NO ADVICE"
         subject = f"[SPX Quant {aid}] NO CHANGE: {what.lower()}"
@@ -126,6 +131,9 @@ def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
             f"  Worst-case limit: ${s.worst_total:,.2f} of ${s.worst_limit:,.2f} ({prof.max_worst_case_pct:.0%} of net liq; "
             f"{s.contracts} x ${s.worst_per_lot:,.2f} stress loss per lot)",
         ]
+        if s.limited_by == "remaining buying power" and s.bp_contracts > s.contracts:
+            lines.append(f"  Sized down from {s.bp_contracts} to {s.contracts} lot{'' if s.contracts == 1 else 's'} for remaining buying power: "
+                         f"${s.available:,.2f} available after open positions.")
         if s.limited_by == "worst case" and s.bp_contracts > s.contracts:
             lines.append(f"  Sized down from {s.bp_contracts} to {s.contracts} lot{'' if s.contracts == 1 else 's'} so the worst case stays inside the limit; "
                          f"buying power alone would allow {s.bp_contracts}.")
@@ -155,6 +163,7 @@ def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
         lines += [_candidate_summary(i, x) for i, x in enumerate(res.ranked, 1)]
         why = f"  Ranked first because it has the highest expected annual return on buying power ({r.ann_return_bp:.1f}%)"
         lines.append(why + ("." if len(res.ranked) == 1 else f" of {len(res.ranked)} candidates that fit."))
+        lines += ["", REPLY_LINE]
     elif res.kind == "stand_down":
         subject = f"[SPX Quant {aid}] STAND DOWN: {res.reasons[0] if res.reasons else 'no trade'}"
         lines += ["", "DO NOT ENTER"] + [f"  - {x}" for x in res.reasons]

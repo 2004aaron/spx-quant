@@ -1,7 +1,7 @@
 """CLI: python -m spx_quant [--profile P] [--db D] [--params F] <command>
 
   profile set --net-liq N --margin reg_t|portfolio [--bp-cap 0.08] [--dt-limit N]
-              [--notify none|email|discord] [--email-to ADDR] [--max-worst-case 0.05]
+              [--notify none|email|discord|gmail] [--email-to ADDR] [--max-worst-case 0.05]
   profile show
   probe   [--ticker _SPX]                       feed check: shape, size, quote age
   regime                                        VIX term structure -> regime and gate
@@ -9,20 +9,27 @@
   mark    [--replay FILE [--now ISO]]           daily marking job
   log     [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--kind K] [--full]
   record  --out FILE.json.gz                    save the current boards for replay
-  kr      a1|a2|a3|b1|b2|b3 [--from D] [--to D] [--plant]
+  kr      a1|a2|a3|b1|b2|b3|rc1|rc2|rc3|s1 [--from D] [--to D] [--plant] [--broker CSV]
   notify-test                                   send a test message on the profile's channel
   margin-check [--alert ID] [--broker-bp N [--apply]]
                                                 compare engine buying power with one broker ticket
+  outbox                                        queued Gmail messages as JSON (the scheduled task sends them)
+  delivered ID [--ref MSG_ID | --failed ERROR]  record the result of one Gmail send
+  decide ID accepted|declined|modified|closed [--contracts N] [--reason TEXT] [--source S] [--ref R]
+  reply ID TEXT [--ref R]                       record a decision from an email reply's text
+  show ID                                       one alert with its deliveries, decisions and marks
+  report [--end YYYY-MM-DD] [--days 7] [--out FILE]   weekly report (US-11, US-12)
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from datetime import date
 from pathlib import Path
 
-from . import __version__, calibrate, clock, kr, mark, notify, pipeline, store
+from . import __version__, calibrate, clock, decisions, kr, mark, notify, outbox, pipeline, report, store
 from . import profile as prof
 from .data import cboe
 from .params import DEFAULT_PATH as PARAMS_PATH, load_params
@@ -135,7 +142,7 @@ def cmd_kr(a, params) -> int:
     conn = store.connect(a.db) if a.which != "a3" else None
     start = date.fromisoformat(a.start) if a.start else None
     end = date.fromisoformat(a.end) if a.end else None
-    text, passed = kr.run(a.which, conn, params, start, end, plant=a.plant)
+    text, passed = kr.run(a.which, conn, params, start, end, plant=a.plant, broker=a.broker)
     print(text)
     return 0 if passed else 1
 
@@ -144,6 +151,10 @@ def cmd_notify_test(a, params) -> int:
     p = _profile(a)
     try:
         ch = notify.channel_for(p)
+        if ch is None and p.notify_channel == "gmail":
+            print("gmail: alerts are queued in the log and sent by the scheduled task's Gmail connector; "
+                  "see `outbox` and `delivered`")
+            return 0
         if ch is None:
             print("profile notify channel is 'none'")
             return 1
@@ -172,6 +183,72 @@ def cmd_margin_check(a, params) -> int:
         print(f"wrote pm_house_multiplier = {ratio} to {a.params}")
     elif a.apply:
         print("nothing written")
+    return 0
+
+
+def cmd_outbox(a, params) -> int:
+    print(json.dumps(outbox.pending(store.connect(a.db), params), indent=1))
+    return 0
+
+
+def cmd_delivered(a, params) -> int:
+    try:
+        r = outbox.record(store.connect(a.db), params, a.alert_id, clock.now_utc(), ref=a.ref, error=a.failed)
+    except outbox.OutboxError as e:
+        print(f"rejected: {e}")
+        return 2
+    print(f"{a.alert_id}: {r}")
+    return 0
+
+
+def _decide(a, decision, contracts, reason, source, ref) -> int:
+    try:
+        r = decisions.record(store.connect(a.db), a.alert_id, decision, clock.now_utc(), reason or "", contracts, source, ref)
+    except decisions.DecisionError as e:
+        print(f"rejected: {e}")
+        return 2
+    print(f"{a.alert_id}: {decision} {r}" if r == "recorded" else f"{a.alert_id}: this reply was already recorded")
+    return 0
+
+
+def cmd_decide(a, params) -> int:
+    return _decide(a, a.decision, a.contracts, a.reason, a.source, a.ref)
+
+
+def cmd_reply(a, params) -> int:
+    parsed = decisions.parse_reply(a.text)
+    if parsed is None:
+        print("rejected: the reply does not start with accepted, declined, modified or closed; nothing stored")
+        return 2
+    return _decide(a, parsed[0], parsed[1], a.text.strip()[:200], "email", a.ref)
+
+
+def cmd_show(a, params) -> int:
+    conn = store.connect(a.db)
+    al = store.get_alert(conn, a.alert_id)
+    if al is None:
+        print(f"no logged alert with id {a.alert_id!r}")
+        return 1
+    print(al["text"] + "\n" + "-" * 72)
+    for d in store.rows(conn, "SELECT * FROM delivery WHERE alert_id = ? ORDER BY id", (a.alert_id,)):
+        when = clock.fmt(clock.parse_utc(d["delivered_ts"] or d["sent_ts"])) if (d["delivered_ts"] or d["sent_ts"]) else ""
+        print(f"delivery  {d['channel']:<8} {d['status']:<10} attempt {d['attempt']}  {when}  {d['error'] or ''}".rstrip())
+    for f in decisions.history(conn, a.alert_id):
+        size = f" x{f['contracts']}" if f["contracts"] else ""
+        print(f"decision  {f['decision']}{size}  {clock.fmt(clock.parse_utc(f['received_ts']))}  via {f['source']}  {f['reason'] or ''}".rstrip())
+    for m in store.marks_for(conn, a.alert_id):
+        print(f"mark      {m['market_date']}  P/L ${m['pnl']:,.2f}{'  SETTLED' if m['settled'] else ''}")
+    return 0
+
+
+def cmd_report(a, params) -> int:
+    end = date.fromisoformat(a.end) if a.end else clock.market_date(clock.now_utc())
+    text = report.weekly(store.connect(a.db), params, end, a.days)
+    if a.out:
+        Path(a.out).write_text(text, encoding="utf-8")
+        print(f"wrote {a.out}")
+    else:
+        print(text, end="")
     return 0
 
 
@@ -235,9 +312,43 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("--from", dest="start")
     q.add_argument("--to", dest="end")
     q.add_argument("--plant", action="store_true", help="A-KR2: plant one bad row per check in a copy of the log")
+    q.add_argument("--broker", help="RC-KR2: CSV of broker marks (alert_id,market_date,broker_pnl)")
     q.set_defaults(fn=cmd_kr)
 
     sub.add_parser("notify-test").set_defaults(fn=cmd_notify_test)
+
+    sub.add_parser("outbox").set_defaults(fn=cmd_outbox)
+    q = sub.add_parser("delivered")
+    q.add_argument("alert_id")
+    g = q.add_mutually_exclusive_group()
+    g.add_argument("--ref", help="Gmail message id of the sent alert")
+    g.add_argument("--failed", metavar="ERROR", help="the send failed with this error")
+    q.set_defaults(fn=cmd_delivered)
+
+    q = sub.add_parser("decide")
+    q.add_argument("alert_id")
+    q.add_argument("decision", choices=decisions.DECISIONS)
+    q.add_argument("--contracts", type=int, help="size actually taken (required for modified)")
+    q.add_argument("--reason", default="")
+    q.add_argument("--source", default="cli", choices=["cli", "email"])
+    q.add_argument("--ref", help="id of the email reply, so it is never counted twice")
+    q.set_defaults(fn=cmd_decide)
+
+    q = sub.add_parser("reply")
+    q.add_argument("alert_id")
+    q.add_argument("text", help="the reply's text; its first word is the decision")
+    q.add_argument("--ref", help="id of the email reply")
+    q.set_defaults(fn=cmd_reply)
+
+    q = sub.add_parser("show")
+    q.add_argument("alert_id")
+    q.set_defaults(fn=cmd_show)
+
+    q = sub.add_parser("report")
+    q.add_argument("--end", help="last market date of the week (default: today)")
+    q.add_argument("--days", type=int, default=7)
+    q.add_argument("--out")
+    q.set_defaults(fn=cmd_report)
 
     q = sub.add_parser("margin-check")
     q.add_argument("--alert", help="proposal alert ID (default: the latest proposal in the log)")

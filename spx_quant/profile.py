@@ -27,7 +27,7 @@ from pathlib import Path
 HOME = Path(os.environ.get("SPX_QUANT_HOME", Path.home() / ".spx-quant"))
 DEFAULT_PATH = HOME / "profile.json"
 MARGIN_TYPES = ("reg_t", "portfolio")
-CHANNELS = ("none", "email", "discord")
+CHANNELS = ("none", "email", "discord", "gmail")  # gmail: queued, sent by the scheduled task's Gmail connector
 PM_MIN_NET_LIQ = 100_000.0      # tastytrade keeps portfolio margin active at $100,000+ ($125,000 to open)
 LARGE_TIER_ABOVE = 1_000_000.0  # [UNVALIDATED] mentor call, Aug 2026: "millions" is where 1:2 becomes too directional
 DT_LIMIT = {"starter": 2.0, "standard": 2.0, "large": 7.0}  # [UNVALIDATED] mentor call: 1:2 "is the limit"; millions "closer to 1:10, 1:7"
@@ -105,8 +105,8 @@ def validate(net_liq, margin_type, bp_cap_pct=DEFAULT_BP_CAP, delta_theta_limit=
     if notify_channel not in CHANNELS:
         raise ProfileError(f"notify_channel: {notify_channel!r} must be one of {CHANNELS}")
     email_to = (email_to or "").strip()
-    if notify_channel == "email" and "@" not in email_to:
-        raise ProfileError("email_to: an address is required when notify_channel is email")
+    if notify_channel in ("email", "gmail") and "@" not in email_to:
+        raise ProfileError(f"email_to: an address is required when notify_channel is {notify_channel}")
     max_worst_case_pct = _num("max_worst_case_pct", max_worst_case_pct)
     if not 0 < max_worst_case_pct <= 1:
         raise ProfileError(f"max_worst_case_pct: {max_worst_case_pct:g} must be in (0, 1]")

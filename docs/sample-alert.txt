@@ -38,6 +38,8 @@ RANKING (expected annual return on buying power; best first)
   1. strangle XSP 11/13 -805C -725P x1: 7.6%/yr on BP, EV $59, POP 80%, worst case -$3,935
   Ranked first because it has the highest expected annual return on buying power (7.6%).
 
+To record your decision, reply with ACCEPTED, DECLINED or MODIFIED <contracts> as the first word (for example: modified 1). Later, reply CLOSED if you exit early.
+
 CONSIDERED, NOT PROPOSED
   - strangle SPX 11/13 -8050C -7250P: worst case $39,359.86 per lot is over the $7,500.00 limit (5% of $150,000); needs $62,456.41 of buying power per lot; cap is $12,000.00 (8% of $150,000, portfolio)
   - naked put SPX 11/13 -7250P: worst case $41,453.85 per lot is over the $7,500.00 limit (5% of $150,000); needs $65,173.75 of buying power per lot; cap is $12,000.00 (8% of $150,000, portfolio); delta:theta 1:0.7 breaks the 1:2 limit (delta +160.60 SPY deltas, theta $118.24/day per lot)
