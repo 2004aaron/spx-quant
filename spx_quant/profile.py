@@ -1,4 +1,4 @@
-"""Account profile (US-01): size, margin type, risk caps and notification address.
+"""Account profile (US-01): size, margin type and risk caps.
 
 Three caps apply to every proposal: buying power per position (bp_cap_pct), the
 delta:theta ratio, and the stress-test worst case (max_worst_case_pct of net
@@ -27,7 +27,6 @@ from pathlib import Path
 HOME = Path(os.environ.get("SPX_QUANT_HOME", Path.home() / ".spx-quant"))
 DEFAULT_PATH = HOME / "profile.json"
 MARGIN_TYPES = ("reg_t", "portfolio")
-CHANNELS = ("none", "email", "discord", "gmail")  # gmail: queued, sent by the scheduled task's Gmail connector
 PM_MIN_NET_LIQ = 100_000.0      # tastytrade keeps portfolio margin active at $100,000+ ($125,000 to open)
 LARGE_TIER_ABOVE = 1_000_000.0  # [UNVALIDATED] mentor call, Aug 2026: "millions" is where 1:2 becomes too directional
 DT_LIMIT = {"starter": 2.0, "standard": 2.0, "large": 7.0}  # [UNVALIDATED] mentor call: 1:2 "is the limit"; millions "closer to 1:10, 1:7"
@@ -47,8 +46,6 @@ class Profile:
     margin_type: str
     bp_cap_pct: float = DEFAULT_BP_CAP
     delta_theta_limit: float = 2.0
-    notify_channel: str = "none"
-    email_to: str = ""
     max_worst_case_pct: float = DEFAULT_MAX_WORST_CASE
 
     @property
@@ -65,11 +62,10 @@ class Profile:
         return round(self.net_liq * self.max_worst_case_pct, 2)
 
     def __str__(self) -> str:
-        note = f"  notify {self.notify_channel}" + (f" {self.email_to}" if self.email_to else "")
         return (f"net liq ${self.net_liq:,.0f}  margin {self.margin_type}  tier {self.tier}  "
                 f"per-position BP cap {self.bp_cap_pct:.0%} (${self.bp_cap_dollars:,.0f})  "
                 f"delta:theta limit 1:{self.delta_theta_limit:g}  "
-                f"worst-case limit {self.max_worst_case_pct:.0%} (${self.worst_case_limit:,.0f}){note}")
+                f"worst-case limit {self.max_worst_case_pct:.0%} (${self.worst_case_limit:,.0f})")
 
 
 class ProfileError(ValueError):
@@ -84,7 +80,7 @@ def _num(name, v) -> float:
 
 
 def validate(net_liq, margin_type, bp_cap_pct=DEFAULT_BP_CAP, delta_theta_limit=None,
-             notify_channel="none", email_to="", max_worst_case_pct=DEFAULT_MAX_WORST_CASE) -> Profile:
+             max_worst_case_pct=DEFAULT_MAX_WORST_CASE) -> Profile:
     """delta_theta_limit=None takes the tier default."""
     net_liq = _num("net_liq", net_liq)
     if net_liq <= 0:
@@ -102,15 +98,10 @@ def validate(net_liq, margin_type, bp_cap_pct=DEFAULT_BP_CAP, delta_theta_limit=
     delta_theta_limit = _num("delta_theta_limit", delta_theta_limit)
     if delta_theta_limit <= 0:
         raise ProfileError(f"delta_theta_limit: {delta_theta_limit:g} must be positive")
-    if notify_channel not in CHANNELS:
-        raise ProfileError(f"notify_channel: {notify_channel!r} must be one of {CHANNELS}")
-    email_to = (email_to or "").strip()
-    if notify_channel in ("email", "gmail") and "@" not in email_to:
-        raise ProfileError(f"email_to: an address is required when notify_channel is {notify_channel}")
     max_worst_case_pct = _num("max_worst_case_pct", max_worst_case_pct)
     if not 0 < max_worst_case_pct <= 1:
         raise ProfileError(f"max_worst_case_pct: {max_worst_case_pct:g} must be in (0, 1]")
-    return Profile(net_liq, margin_type, bp_cap_pct, delta_theta_limit, notify_channel, email_to, max_worst_case_pct)
+    return Profile(net_liq, margin_type, bp_cap_pct, delta_theta_limit, max_worst_case_pct)
 
 
 def save(profile: Profile, path: Path = DEFAULT_PATH) -> Path:
@@ -126,7 +117,7 @@ def load(path: Path = DEFAULT_PATH) -> Profile | None:
         return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return validate(**data)
+        return validate(**{k: v for k, v in data.items() if k in Profile.__dataclass_fields__})
     except (ValueError, TypeError) as e:
         if isinstance(e, ProfileError):
             raise
