@@ -1,8 +1,6 @@
-# Registers the SPX Quant jobs in Windows Task Scheduler (through Alpha, proposal 4.5).
+# Registers the two StormGlass scans in Windows Task Scheduler (Alpha host, proposal 4.5).
 # Times are this PC's local clock, so the PC must be on Pacific time.
 # Run once from the repo in PowerShell:  .\deploy\windows\register_tasks.ps1
-# Credentials: set SPX_QUANT_SMTP_* or SPX_QUANT_DISCORD_WEBHOOK as user environment
-# variables first (System Properties > Environment Variables); tasks run as you and inherit them.
 param(
     [string]$Repo = (Resolve-Path "$PSScriptRoot\..\..").Path,
     [string]$Python = (Get-Command python).Source,
@@ -21,7 +19,6 @@ function Add-Job([string]$Name, [string]$At, [string]$Command) {
     Write-Host "registered '$Name' at $At -> python $argline"
 }
 
-Add-Job "SPX Quant scan 10:30" "10:30" "scan --slot 10:30"
-Add-Job "SPX Quant scan 13:25" "13:25" "scan --slot 13:25"
-Add-Job "SPX Quant mark 13:45" "13:45" "mark"
-Write-Host "Check with: Get-ScheduledTask 'SPX Quant*' | Get-ScheduledTaskInfo"
+Add-Job "StormGlass scan 10:30" "10:30" "scan --slot 10:30"
+Add-Job "StormGlass scan 13:25" "13:25" "scan --slot 13:25"
+Write-Host "Check with: Get-ScheduledTask 'StormGlass*' | Get-ScheduledTaskInfo"

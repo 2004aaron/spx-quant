@@ -40,8 +40,6 @@ class ProfileTest(unittest.TestCase):
             dict(net_liq=1000, margin_type="reg_t", bp_cap_pct=1.5),
             dict(net_liq=1000, margin_type="reg_t", bp_cap_pct=0),
             dict(net_liq=1000, margin_type="reg_t", delta_theta_limit=0),
-            dict(net_liq=1000, margin_type="reg_t", notify_channel="sms"),
-            dict(net_liq=1000, margin_type="reg_t", notify_channel="email", email_to=""),
         ):
             with self.assertRaises(prof.ProfileError, msg=kwargs):
                 prof.validate(**kwargs)
@@ -61,17 +59,12 @@ class ProfileTest(unittest.TestCase):
             with self.assertRaises(prof.ProfileError, msg=bad):
                 prof.validate(150_000, "portfolio", max_worst_case_pct=bad)
 
-    def test_profile_saved_before_the_worst_case_limit_still_loads(self):
+    def test_profile_saved_by_an_older_version_still_loads(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "profile.json"
             path.write_text('{"net_liq": 150000, "margin_type": "portfolio", "bp_cap_pct": 0.08, '
                             '"delta_theta_limit": 2.0, "notify_channel": "none", "email_to": ""}')
             self.assertEqual(prof.load(path).max_worst_case_pct, 0.05)
-
-    def test_notification_address_is_part_of_the_profile(self):
-        p = prof.validate(150_000, "portfolio", notify_channel="email", email_to=" me@example.com ")
-        self.assertEqual(p.email_to, "me@example.com")
-        self.assertIn("notify email me@example.com", str(p))
 
     def test_missing_file_means_no_profile(self):
         self.assertIsNone(prof.load(Path(tempfile.gettempdir()) / "definitely-not-here.json"))

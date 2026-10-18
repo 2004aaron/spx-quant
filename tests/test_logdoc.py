@@ -18,7 +18,7 @@ class LogDocTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.d = Path(self.tmp.name)
         conn = store.connect(self.d / "a.db")
-        pipeline.scan(conn, replay(), pm150(), PARAMS, slot="13:25", send=False)
+        pipeline.scan(conn, replay(), pm150(), PARAMS, slot="13:25")
         conn.close()
 
     def tearDown(self):
@@ -34,7 +34,7 @@ class LogDocTest(unittest.TestCase):
             conn.execute("DELETE FROM alert")
         conn.close()
         conn2 = store.connect(self.d / "b.db")
-        pipeline.scan(conn2, replay(), pm150(), PARAMS, slot="13:25", send=False)
+        pipeline.scan(conn2, replay(), pm150(), PARAMS, slot="13:25")
         self.assertEqual(conn2.execute("SELECT COUNT(*) FROM alert").fetchone()[0], 2)
 
     def test_damaged_copy_is_refused(self):

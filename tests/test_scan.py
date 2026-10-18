@@ -1,4 +1,4 @@
-"""End-to-end scans: engine, alert text, and the log (US-02 to US-06, US-08)."""
+"""End-to-end scans: engine, alert text, and the scan log (US-02 to US-06)."""
 import sqlite3
 import unittest
 from datetime import date, datetime
@@ -14,7 +14,7 @@ class WorstCaseCutTest(unittest.TestCase):
     """A 20% buying-power cap allows 4 strangles; 2 x $3,934.67 stress loss is already over the $7,500 limit."""
 
     def test_worst_case_limit_cuts_the_size(self):
-        rec = pipeline.scan(memdb(), replay(), validate(150_000, "portfolio", 0.20, 2), PARAMS, slot="13:25", send=False)
+        rec = pipeline.scan(memdb(), replay(), validate(150_000, "portfolio", 0.20, 2), PARAMS, slot="13:25")
         a = rec.alert
         s = next(c["sized"] for c in a["candidates"] if c["strategy"] == a["strategy"] and c["ticker"] == a["ticker"])
         self.assertEqual((a["strategy"], s["bp_contracts"], s["contracts"], s["limited_by"]), ("strangle", 4, 1, "worst case"))
@@ -26,7 +26,7 @@ class ProposalTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.conn = memdb()
-        cls.rec = pipeline.scan(cls.conn, replay(), pm150(), PARAMS, slot="13:25", send=False)
+        cls.rec = pipeline.scan(cls.conn, replay(), pm150(), PARAMS, slot="13:25")
         cls.alert = cls.rec.alert
 
     def test_us03_ac1_recorded_contango_session_gives_a_full_proposal(self):
@@ -63,7 +63,7 @@ class ProposalTest(unittest.TestCase):
         self.assertIn("SPY deltas", " ".join(put["reasons"]))
 
     def test_us03_ac2_ranked_by_annual_return_on_bp_and_runner_up_shown(self):
-        rec = pipeline.scan(memdb(), replay(), pm150_loose(), PARAMS, slot="13:25", send=False)
+        rec = pipeline.scan(memdb(), replay(), pm150_loose(), PARAMS, slot="13:25")
         ranked = rec.result.ranked
         self.assertGreaterEqual(len(ranked), 2)
         rets = [c.risk.ann_return_bp for c in ranked]
@@ -80,7 +80,7 @@ class ProposalTest(unittest.TestCase):
                       "held to expiration"):
             self.assertIn(label, text)
 
-    def test_b_kr3_quotes_and_both_timestamps_in_the_message(self):
+    def test_qr6_quotes_and_both_timestamps_in_the_alert(self):
         text = self.alert["text"]
         self.assertIn("Output: 2026-09-28 13:25 PT", text)
         self.assertIn("Data as of: 2026-09-28 13:14 PT", text)
@@ -91,7 +91,7 @@ class ProposalTest(unittest.TestCase):
             self.assertIn(f"bid {leg['bid']:.2f}", line)
             self.assertIn(f"ask {leg['ask']:.2f}", line)
 
-    def test_us08_ac1_one_complete_row_per_scan(self):
+    def test_one_complete_log_row_per_scan(self):
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM alert").fetchone()[0], 1)
         scan = store.rows(self.conn, "SELECT * FROM scan")[0]
         self.assertEqual((scan["outcome"], scan["slot"], scan["alert_id"]), ("proposal", "13:25", self.alert["alert_id"]))
@@ -102,7 +102,7 @@ class ProposalTest(unittest.TestCase):
 class StandDownTest(unittest.TestCase):
     def scan(self, source, profile=None, params=PARAMS):
         conn = memdb()
-        return conn, pipeline.scan(conn, source, profile or pm150(), params, slot="10:30", send=False)
+        return conn, pipeline.scan(conn, source, profile or pm150(), params, slot="10:30")
 
     def test_us04_ac1_ac3_panic_stands_down_and_is_logged(self):
         conn, rec = self.scan(SyntheticSource(35.0, "flat"))
@@ -166,33 +166,32 @@ class StandDownTest(unittest.TestCase):
 
 
 class LogTest(unittest.TestCase):
-    def test_us08_ac2_query_by_date_in_order(self):
+    def test_log_query_by_date_in_order(self):
         conn = memdb()
         for day, vix in ((5, 35.0), (6, 12.0), (7, 36.0), (8, 11.0)):
             now = clock.local_to_utc("PT", datetime(2026, 10, day, 10, 30))
-            pipeline.scan(conn, SyntheticSource(vix, "flat", now=now), pm150(), PARAMS, "10:30", send=False)
+            pipeline.scan(conn, SyntheticSource(vix, "flat", now=now), pm150(), PARAMS, "10:30")
         got = store.alerts_between(conn, date(2026, 10, 6), date(2026, 10, 7))
         self.assertEqual([a["market_date"] for a in got], ["2026-10-06", "2026-10-07"])
         self.assertEqual(len(store.alerts_between(conn, date(2026, 10, 1), date(2026, 10, 31))), 4)
 
     def test_log_is_append_only(self):
         conn = memdb()
-        pipeline.scan(conn, SyntheticSource(35.0, "flat"), pm150(), PARAMS, "10:30", send=False)
+        pipeline.scan(conn, SyntheticSource(35.0, "flat"), pm150(), PARAMS, "10:30")
         for sql in ("UPDATE alert SET kind = 'proposal'", "DELETE FROM alert", "DELETE FROM scan", "UPDATE scan SET outcome='x'"):
             with self.assertRaises(sqlite3.DatabaseError, msg=sql):
                 conn.execute(sql)
 
     def test_same_slot_twice_gets_distinct_ids(self):
         conn = memdb()
-        a = pipeline.scan(conn, SyntheticSource(35.0, "flat"), pm150(), PARAMS, "10:30", send=False).alert
-        b = pipeline.scan(conn, SyntheticSource(35.0, "flat"), pm150(), PARAMS, "10:30", send=False).alert
+        a = pipeline.scan(conn, SyntheticSource(35.0, "flat"), pm150(), PARAMS, "10:30").alert
+        b = pipeline.scan(conn, SyntheticSource(35.0, "flat"), pm150(), PARAMS, "10:30").alert
         self.assertNotEqual(a["alert_id"], b["alert_id"])
-        self.assertEqual(a["fingerprint"], b["fingerprint"])
 
     def test_late_run_is_flagged(self):
         conn = memdb()
         noon = clock.local_to_utc("PT", datetime(2026, 10, 7, 12, 0))
-        rec = pipeline.scan(conn, SyntheticSource(35.0, "flat", now=noon), pm150(), PARAMS, "10:30", send=False)
+        rec = pipeline.scan(conn, SyntheticSource(35.0, "flat", now=noon), pm150(), PARAMS, "10:30")
         self.assertIn("late run: started 2026-10-07 12:00 PT, 90 min after the 10:30 slot", rec.alert["text"])
         self.assertEqual(store.rows(conn, "SELECT kind FROM event")[0]["kind"], "scan_late")
 
