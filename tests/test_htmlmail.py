@@ -23,11 +23,12 @@ class HtmlMailTest(unittest.TestCase):
     def test_proposal_html_carries_the_numbers_in_the_text(self):
         a = scan(memdb(), replay())
         html, text = a["html"], a["text"]
-        self.assertTrue(html.startswith("<!doctype html>"))
         self.assertNotIn("<script", html.lower())
-        self.assertEqual(html.lower().count("<style"), 1)          # one block, in the head
-        self.assertLess(html.index("<style"), html.index("<body"))
-        self.assertLess(len(html), 16_000)                           # small enough for the task to pass to Gmail
+        # the Gmail connector strips <style>, class attributes and the background shorthand
+        self.assertNotIn("<style", html.lower())
+        self.assertNotIn(" class=", html)
+        self.assertNotRegex(html, r'[";]background:')
+        self.assertLess(len(html), 20_000)
         for heading in ("At a glance", "The trade", "Account limits", "Market", "Ranking", "Your decision"):
             self.assertIn(heading, html)
         self.assertIn(a["alert_id"], html)

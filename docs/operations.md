@@ -40,7 +40,9 @@ Each queued message in `outbox` has a `body` (plain text, the logged record) and
 `htmlBody` and `body` as the plain-text alternative. Alerts logged before the HTML
 version have `html: null`; send those as plain text. For the weekly report,
 `report --out report.txt --html report.html` writes both. Samples are in
-`docs/sample-alert.html` and `docs/sample-no-change.html`.
+`docs/sample-alert.html` and `docs/sample-no-change.html`. The Gmail connector strips
+`<style>` blocks, `class` attributes and the `background` shorthand, so the HTML uses
+inline styles, `background-color` and `bgcolor` only (`tests/test_htmlmail.py` checks it).
 
 Decisions come back as email replies. Reply to an alert with ACCEPTED, DECLINED,
 MODIFIED <contracts> or (later) CLOSED as the first word; the end-of-day task finds
