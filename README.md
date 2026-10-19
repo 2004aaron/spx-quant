@@ -26,7 +26,7 @@ has a test; the map is in [`docs/story-map.md`](docs/story-map.md).
 | US-01 account profile | size, margin type, BP cap, delta:theta limit, worst-case limit; account tiers; bad input keeps the old profile | `profile.py` |
 | US-02 regime | contango / flat / backwardation and a volatility bucket, with the VIX values and a timestamp; names a missing point | `regime.py` |
 | US-03 sized proposal | four builders (strangle, naked put, put vertical, iron condor) on SPX, falling back to XSP when SPX can't fit; Reg-T and portfolio margin; inclusive cap; contracts cut so the stress-test worst case stays within the profile's limit (default 5% of net liq); account tiers set the delta:theta default (1:2 under $1M, 1:7 above, in SPY-weighted deltas); ranked by expected annual return on buying power | `strategies.py`, `margin.py`, `sizing.py`, `engine.py` |
-| US-04 stand-down | floor 13, ceiling 28, backwardation; reasons logged | `regime.py`, `engine.py` |
+| US-04 stand-down | floor 13 and ceiling 28 by default (`gate.stand_down_on`); backwardation shown as information since the [2026-10-19 rules pivot](docs/results/rules-pivot.md); reasons logged | `regime.py`, `engine.py` |
 | US-05 risk block | probability of profit, expected value, worst case (index -10%, volatility +10 points), CVaR 5% / 1%, breakevens, stress rows, implied crash rate, stated assumptions; refuses to default a missing assumption | `analytics.py` |
 | US-06 data check | one fetch per scan, checked for shape, size and quote age before use; NO ADVICE on stale or incomplete data | `data/cboe.py` |
 | Scan log | every scheduled scan and its result, with the quotes behind it, in append-only SQLite | `store.py`, `pipeline.py` |

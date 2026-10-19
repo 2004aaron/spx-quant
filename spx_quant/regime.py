@@ -74,23 +74,54 @@ def classify(curve: dict[str, float | None], params: Params | None = None, asof:
     return Regime(state, bucket, round(slope, 4), shown, "", asof)
 
 
-def gate(regime: Regime, params: Params | None = None) -> tuple[bool, list[str]]:
-    """Alpha default: stand down in backwardation and outside the volatility floor/ceiling.
+RULES = ("backwardation", "vol_floor", "vol_ceiling")
+DEFAULT_STAND_DOWN = ("vol_floor", "vol_ceiling")
 
-    The historical evidence in docs/backtest-findings.md contradicts the backwardation
-    rule; it stays as the Alpha default and is tagged "tested, not supported".
+
+def readings(regime: Regime, params: Params | None = None) -> dict[str, str]:
+    """Every regime rule that fires, keyed by rule code, with its reason."""
+    p = params or load_params()
+    out: dict[str, str] = {}
+    vix = regime.inputs["vix"]
+    b = p.vol_buckets
+    if regime.state == "backwardation":
+        out["backwardation"] = f"VIX term structure inverted (backwardation): slope {regime.slope:+.3f}"
+    if regime.bucket == "crushed":
+        out["vol_floor"] = f"VIX {vix:.1f} below the {b['crushed_below']:g} floor: premium too thin to be worth the risk"
+    if regime.bucket == "panic":
+        where = "above" if vix > b["elevated_below"] else "at"
+        out["vol_ceiling"] = f"VIX {vix:.1f} {where} the {b['elevated_below']:g} ceiling: panic-level volatility"
+    return out
+
+
+def stand_down_rules(params: Params | None = None) -> tuple[str, ...]:
+    p = params or load_params()
+    rules = tuple(getattr(p, "gate", {}).get("stand_down_on", DEFAULT_STAND_DOWN))
+    unknown = [r for r in rules if r not in RULES]
+    if unknown:
+        raise ValueError(f"gate.stand_down_on names unknown rules: {', '.join(unknown)}")
+    return rules
+
+
+def gate(regime: Regime, params: Params | None = None) -> tuple[bool, list[str]]:
+    """Stand down only on the rules listed in gate.stand_down_on.
+
+    Backwardation is reported by advisories() instead: the 2026-10-19 re-run found the
+    inverted curve was the best regime for short premium (docs/results/rules-pivot.md).
     """
     p = params or load_params()
     if not regime.known:
         return False, [f"regime could not be identified: {regime.reason}"]
-    reasons: list[str] = []
-    vix = regime.inputs["vix"]
-    b = p.vol_buckets
-    if regime.state == "backwardation":
-        reasons.append(f"VIX term structure inverted (backwardation): slope {regime.slope:+.3f}")
-    if regime.bucket == "crushed":
-        reasons.append(f"VIX {vix:.1f} below the {b['crushed_below']:g} floor: premium too thin to be worth the risk")
-    if regime.bucket == "panic":
-        where = "above" if vix > b["elevated_below"] else "at"
-        reasons.append(f"VIX {vix:.1f} {where} the {b['elevated_below']:g} ceiling: panic-level volatility")
+    active = stand_down_rules(p)
+    reasons = [why for code, why in readings(regime, p).items() if code in active]
     return not reasons, reasons
+
+
+def advisories(regime: Regime, params: Params | None = None) -> list[str]:
+    """Rules that fired but are configured as information only."""
+    p = params or load_params()
+    if not regime.known:
+        return []
+    active = stand_down_rules(p)
+    return [f"{why} (information only, not a stand-down rule)" for code, why in readings(regime, p).items()
+            if code not in active]

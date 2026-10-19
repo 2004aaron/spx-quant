@@ -8,6 +8,12 @@
 contango_slope = 0.05
 backwardation_slope = -0.01
 
+[gate]
+# Which regime readings stop a scan with STAND DOWN. Anything not listed is shown as
+# information on the alert but does not block a proposal (rule options: backwardation,
+# vol_floor, vol_ceiling).
+stand_down_on = ["vol_floor", "vol_ceiling"]
+
 [vol_buckets]
 crushed_below = 13.0     # volatility floor (US-04-AC2)
 low_below = 16.0
@@ -76,7 +82,8 @@ eod_slot = "13:25"
 
 [provenance]
 "regime.contango_slope" = { tag = "unvalidated", source = "mentor framework, Aug 2026 call" }
-"regime.backwardation_slope" = { tag = "unvalidated: tested, not supported", source = "backtest-findings Tier A table 2 (2026-09-07): backwardation stand-down contradicted, p=0.004 PUTD" }
+"regime.backwardation_slope" = { tag = "unvalidated", source = "classification threshold only; backwardation no longer stands down (see gate.stand_down_on)" }
+"gate.stand_down_on" = { tag = "unvalidated: partially supported", source = "docs/results/rules-pivot.md (2026-10-19 re-run, Cboe data through 2026-10-16): backwardation removed, PUTD +26.4 pp/yr in backwardation vs rest, p=0.0015; floor kept (lowest-return bucket); ceiling kept as a risk rail, not supported on returns" }
 "vol_buckets.crushed_below" = { tag = "unvalidated: partially supported", source = "backtest-findings Tier A table 4: right sign, not significant" }
 "vol_buckets.low_below" = { tag = "unvalidated", source = "mentor framework" }
 "vol_buckets.normal_below" = { tag = "unvalidated", source = "mentor framework" }
