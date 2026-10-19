@@ -1,7 +1,7 @@
 # Every parameter below must have a matching [provenance."section.key"] entry with a
 # tag from {validated, unvalidated, "unvalidated: tested, not supported",
 # "unvalidated: partially supported"} and a source. Loading fails otherwise.
-# The account profile (size, margin type, caps) is NOT here:
+# The account profile (size, margin type, caps, notification address) is NOT here:
 # it lives in a local file that is never committed (QR-5).
 
 [regime]
@@ -64,6 +64,12 @@ worst_case_vol_points = 10.0
 stress_moves = [-0.20, -0.10, -0.05, 0.05, 0.10]
 grid_points = 2001
 
+[management]
+profit_target = 0.50
+loss_multiple = 2.0
+defensive_dte = 21
+tested_delta = 0.30
+
 [feed]
 stale_after_minutes = 30
 timeout_seconds = 30
@@ -73,6 +79,13 @@ tickers = ["_SPX", "_XSP"]
 [schedule]
 slots = ["10:30", "13:25"]
 eod_slot = "13:25"
+mark_time = "13:45"
+
+[notify]
+repeat_policy = "brief"
+max_attempts = 3
+retry_wait_seconds = 5
+latency_target_minutes = 20
 
 [provenance]
 "regime.contango_slope" = { tag = "unvalidated", source = "mentor framework, Aug 2026 call" }
@@ -113,9 +126,18 @@ eod_slot = "13:25"
 "risk.min_pop" = { tag = "unvalidated", source = "proposal 2.4: stand down when the chance of losing exceeds a threshold" }
 "risk.stress_moves" = { tag = "unvalidated", source = "operational default stress grid" }
 "risk.grid_points" = { tag = "unvalidated", source = "numerical resolution of the terminal distribution" }
+"management.profit_target" = { tag = "validated", source = "backtest-findings Tier B part B: 50% target keeps 84% of return, 5th pct loss -1816 to -634" }
+"management.loss_multiple" = { tag = "unvalidated", source = "engine-build-notes: 2x stop default; same rule as shadow-runner (cost to close >= 2x credit)" }
+"management.defensive_dte" = { tag = "unvalidated", source = "engine-build-notes: 21 DTE exit default" }
+"management.tested_delta" = { tag = "unvalidated", source = "shadow-runner: strike tested at 30 delta" }
 "feed.stale_after_minutes" = { tag = "validated", source = "proposal QR-1: Cboe feed is ~15 min delayed, 30 min means a failed refresh" }
 "feed.timeout_seconds" = { tag = "unvalidated", source = "operational default" }
 "feed.min_rows" = { tag = "unvalidated", source = "US-06-AC1 expected size: live SPX board ~29k rows, XSP ~17k; under 1,000 means a truncated payload" }
 "feed.tickers" = { tag = "unvalidated", source = "engine-build-notes finding 1: XSP is 1/10 SPX notional for accounts SPX cannot fit" }
 "schedule.slots" = { tag = "unvalidated", source = "proposal A-KR1: 10:30 PT scan and an end-of-day scan after the 13:15 PT SPX close" }
 "schedule.eod_slot" = { tag = "unvalidated", source = "proposal A-KR2: end-of-day proposals are checked against the next 10:30 scan" }
+"schedule.mark_time" = { tag = "unvalidated", source = "user flow diagram screen 3: mark job 1:45 PM PT" }
+"notify.repeat_policy" = { tag = "unvalidated", source = "Aaron 2026-09-28: send a short no-change message (B-KR2) instead of silence; see docs/operations.md" }
+"notify.max_attempts" = { tag = "unvalidated", source = "US-07-AC3 retry" }
+"notify.retry_wait_seconds" = { tag = "unvalidated", source = "operational default" }
+"notify.latency_target_minutes" = { tag = "unvalidated", source = "requirement, not evidence: proposal US-07-AC1 and QR-2" }
