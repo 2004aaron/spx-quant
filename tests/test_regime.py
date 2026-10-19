@@ -2,7 +2,10 @@ import itertools
 import unittest
 from datetime import datetime, timezone
 
-from spx_quant.regime import classify, gate
+from dataclasses import replace
+
+from spx_quant.params import load_params
+from spx_quant.regime import advisories, classify, gate
 
 ASOF = datetime(2026, 10, 5, 17, 15, tzinfo=timezone.utc)
 
@@ -55,7 +58,39 @@ class RegimeTest(unittest.TestCase):
             r = classify({"vix9d": a * scale, "vix": vix, "vix3m": c * scale})
             self.assertEqual((r.state, r.bucket), (state, bucket))
             ok, reasons = gate(r)
-            self.assertEqual(ok, state != "backwardation" and bucket not in ("crushed", "panic"), f"{state}/{bucket}: {reasons}")
+            self.assertEqual(ok, bucket not in ("crushed", "panic"), f"{state}/{bucket}: {reasons}")
+            self.assertEqual(any("backwardation" in n for n in advisories(r)), state == "backwardation")
+
+    def test_backwardation_is_information_not_a_stand_down(self):
+        r = classify({"vix9d": 24.0, "vix": 22.0, "vix3m": 20.5})
+        self.assertEqual((r.state, r.bucket), ("backwardation", "elevated"))
+        ok, reasons = gate(r)
+        self.assertTrue(ok, reasons)
+        notes = advisories(r)
+        self.assertEqual(len(notes), 1)
+        self.assertIn("inverted (backwardation)", notes[0])
+        self.assertIn("information only", notes[0])
+
+    def test_stand_down_rules_come_from_config(self):
+        p = load_params()
+        strict = replace(p, sections={**p.sections, "gate": {"stand_down_on": ["backwardation", "vol_floor", "vol_ceiling"]}})
+        r = classify({"vix": 22.0, "vix3m": 20.5})
+        ok, reasons = gate(r, strict)
+        self.assertFalse(ok)
+        self.assertIn("backwardation", reasons[0])
+        self.assertEqual(advisories(r, strict), [])
+        loose = replace(p, sections={**p.sections, "gate": {"stand_down_on": []}})
+        ok, _ = gate(classify({"vix": 35.0, "vix3m": 36.0}), loose)
+        self.assertTrue(ok)
+
+    def test_unknown_rule_in_config_is_an_error(self):
+        p = load_params()
+        bad = replace(p, sections={**p.sections, "gate": {"stand_down_on": ["vol_flor"]}})
+        with self.assertRaises(ValueError):
+            gate(classify({"vix": 16.0, "vix3m": 18.5}), bad)
+
+    def test_shipped_default_is_floor_and_ceiling_only(self):
+        self.assertEqual(load_params().gate["stand_down_on"], ["vol_floor", "vol_ceiling"])
 
 
 if __name__ == "__main__":
