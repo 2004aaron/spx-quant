@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
 from . import clock, decisions, store
+from . import htmlmail as h
 from .params import Params
 
 FAILURES = {"stale_data": "stale data", "feed_failure": "feed failure", "error": "engine error",
@@ -124,21 +125,55 @@ def failures(conn, params: Params, start: date, end: date) -> list[tuple[str, st
     return sorted(out)
 
 
-def weekly(conn, params: Params, end: date, days: int = 7) -> str:
+@dataclass
+class Week:
+    start: date
+    end: date
+    advisor: list[Position]
+    mine: list[Position]
+    adv_pnl: float
+    my_pnl: float
+    scans: list[dict]
+    delivered: list[dict]
+    asked: list[str]
+    missing: list[str]
+    fails: list[tuple[str, str, str]]
+    slots: int
+
+    def count(self, *outcomes) -> int:
+        return sum(s["outcome"] in outcomes for s in self.scans)
+
+
+def week(conn, params: Params, end: date, days: int = 7) -> Week:
     start = end - timedelta(days=days - 1)
     pos = positions(conn, end)
     advisor = [p for p in pos if not p.repeat]
     mine = [p for p in pos if p.taken is not None]
-    adv_pnl = round(sum(p.pnl or 0.0 for p in advisor), 2)
-    my_pnl = round(sum(p.user_pnl or 0.0 for p in mine), 2)
     scans = store.rows(conn, "SELECT outcome, slot FROM scan WHERE market_date BETWEEN ? AND ?", (start.isoformat(), end.isoformat()))
-    count = lambda *o: sum(s["outcome"] in o for s in scans)
     delivered = store.rows(conn, """SELECT DISTINCT d.alert_id, a.kind, a.repeat_of FROM delivery d JOIN alert a ON a.alert_id = d.alert_id
                                     WHERE d.status = 'delivered' AND a.market_date BETWEEN ? AND ?""", (start.isoformat(), end.isoformat()))
     asked = [r["alert_id"] for r in delivered if r["kind"] == "proposal" and not r["repeat_of"]]
     missing = [a for a in asked if decisions.latest(conn, a, end_of_day(end)) is None]
+    slots = sum(clock.trading_day(start + timedelta(days=i)) for i in range(days)) * len(params.schedule["slots"])
+    return Week(start, end, advisor, mine, round(sum(p.pnl or 0.0 for p in advisor), 2),
+                round(sum(p.user_pnl or 0.0 for p in mine), 2), scans, delivered, asked, missing,
+                failures(conn, params, start, end), slots)
 
-    lines = [f"SPX QUANT | WEEKLY REPORT | week ending {end.isoformat()}",
+
+def _status(p: Position) -> str:
+    return "settled" if p.settled else ("open" if p.mark_date else "not marked yet")
+
+
+def _decision(p: Position) -> str:
+    return (p.decision or "none") + (f" x{p.taken}" if p.decision == "modified" else "")
+
+
+def weekly(conn, params: Params, end: date, days: int = 7) -> str:
+    w = week(conn, params, end, days)
+    start, advisor, mine, adv_pnl, my_pnl = w.start, w.advisor, w.mine, w.adv_pnl, w.my_pnl
+    scans, count, delivered, asked, missing = w.scans, w.count, w.delivered, w.asked, w.missing
+
+    lines = [f"STORMGLASS | WEEKLY REPORT | week ending {end.isoformat()}",
              f"Window: {start.isoformat()} to {end.isoformat()} (market dates). Built only from the log; "
              "regenerating it from the same log gives the same report.", "",
              "SUMMARY",
@@ -157,9 +192,7 @@ def weekly(conn, params: Params, end: date, days: int = 7) -> str:
         for p in advisor:
             a = p.alert
             rows.append([p.alert_id, f"{a['strategy'].replace('_', ' ')} {a['ticker'].lstrip('_')}", p.entered, p.expires,
-                         str(p.contracts), _money(p.credit), _money(p.pnl),
-                         "settled" if p.settled else ("open" if p.mark_date else "not marked yet"),
-                         (p.decision or "none") + (f" x{p.taken}" if p.decision == "modified" else "")])
+                         str(p.contracts), _money(p.credit), _money(p.pnl), _status(p), _decision(p)])
         lines += _cols(rows)
     else:
         lines.append("  No proposals logged yet.")
@@ -185,11 +218,50 @@ def weekly(conn, params: Params, end: date, days: int = 7) -> str:
         lines.append("  No decisions recorded as taken yet.")
 
     lines += ["", "FAILURES AND ANOMALIES THIS WEEK"]
-    fails = failures(conn, params, start, end)
-    if fails:
-        lines += [f"  - {ts} | {kind} | {why}" for ts, kind, why in fails]
+    if w.fails:
+        lines += [f"  - {ts} | {kind} | {why}" for ts, kind, why in w.fails]
     else:
-        n = sum(clock.trading_day(start + timedelta(days=i)) for i in range(days)) * len(params.schedule["slots"])
-        lines.append(f"  No anomalies this week: all {n} scheduled scans ran, nothing failed, and every alert was delivered.")
+        lines.append(f"  No anomalies this week: all {w.slots} scheduled scans ran, nothing failed, and every alert was delivered.")
     lines += ["", "Paper P/L from the engine's own marks, not money earned. Model estimates, not investment advice."]
     return "\n".join(lines) + "\n"
+
+
+def weekly_html(conn, params: Params, end: date, days: int = 7) -> str:
+    """The weekly report as an HTML email body: the same numbers as weekly(), in tables."""
+    w = week(conn, params, end, days)
+    m = h.money
+    sections = [h.section("Summary", h.tiles([
+        ("Advisor book", m(w.adv_pnl), f"{len(w.advisor)} position{'s' * (len(w.advisor) != 1)}, every proposal"),
+        ("Your book", m(w.my_pnl), f"{len(w.mine)} position{'s' * (len(w.mine) != 1)} you took"),
+        ("You minus advisor", m(round(w.my_pnl - w.adv_pnl, 2)), "P/L to date"),
+        ("Scans this week", len(w.scans), f"{w.count('proposal')} proposal{'s' * (w.count('proposal') != 1)}, "
+                                          f"{w.count('stand_down')} stand-down{'s' * (w.count('stand_down') != 1)}")]),
+        h.kv([("No advice", w.count("stale_data", "feed_failure", "error")),
+              ("Alerts delivered", len(w.delivered)),
+              ("Decisions recorded", f"{len(w.asked) - len(w.missing)} of {len(w.asked)} new proposals"
+               + (f"; missing: {', '.join(w.missing)}" if w.missing else ""))]))]
+    sections.append(h.section(f"Positions (advisor book, P/L at the latest mark on or before {end.isoformat()})",
+        h.table(["position", "credit", "P/L", "status", "decision"],
+                [[h.Raw(f"{h.b(p.alert['strategy'].replace('_', ' ') + ' ' + p.alert['ticker'].lstrip('_') + f' x{p.contracts}')}<br>"
+                        f"{h.mono(p.alert_id, small=True)}<br>{h.e(f'{p.entered} to {p.expires}')}"),
+                  m(p.credit), m(p.pnl), _status(p), _decision(p)] for p in w.advisor], right=(1, 2)) if w.advisor else h.para("No proposals logged yet.")))
+    marked = [p for p in w.advisor if p.worst_mark is not None]
+    sections.append(h.section("Worst case predicted vs realized",
+        *([h.table(["alert", "predicted", "worst mark", "reached", "hit"],
+                   [[h.mono(p.alert_id, small=True), m(p.predicted), m(p.worst_mark), f"{p.reached:.0%}" if p.reached is not None else "n/a",
+                     h.b("YES") if p.hit else "no"] for p in marked], right=(1, 2, 3)),
+           h.para(f"{sum(p.hit for p in marked)} of {len(marked)} marked positions reached their stated worst case.", small=True)]
+          if marked else [h.para("No marks yet.")])))
+    sections.append(h.section("Your book (P/L scaled to the contracts you took)",
+        h.table(["alert", "lots", "P/L", "status"],
+                [[h.mono(p.alert_id, small=True), p.taken, m(p.user_pnl), "closed" if p.decision == "closed" else ("settled" if p.settled else "open")]
+                 for p in w.mine], right=(1, 2)) if w.mine else h.para("No decisions recorded as taken yet.")))
+    sections.append(h.section("Failures and anomalies this week",
+        h.table(["when", "type", "reason"], [[ts, h.b(kind), why] for ts, kind, why in w.fails]) if w.fails else
+        h.callout(f"No anomalies this week: all {w.slots} scheduled scans ran, nothing failed, and every alert was delivered.",
+                  ok=True)))
+    return h.page("WEEKLY REPORT", f"week ending {end.isoformat()}",
+                  [f"Window: {w.start.isoformat()} to {end.isoformat()} (market dates)",
+                   "Built only from the log; regenerating it from the same log gives the same report."],
+                  f"Week ending {end:%A, %B} {end.day}, {end.year}", sections,
+                  ["Paper P/L from the engine's own marks, not money earned. Model estimates, not investment advice."])

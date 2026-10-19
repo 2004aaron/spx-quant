@@ -1,4 +1,4 @@
-SPX QUANT | PROPOSAL | 2026-09-28-2026-11-13
+STORMGLASS | PROPOSAL | 2026-09-28-2026-11-13
 Output: 2026-09-28 13:25 PT
 Data as of: 2026-09-28 13:14 PT (10 min old, replay cboe-2026-09-28-close.json.gz)
 

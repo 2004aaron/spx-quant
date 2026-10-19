@@ -12,7 +12,7 @@ from datetime import datetime, time, timedelta
 
 from . import clock, decisions, notify, store
 from .data import cboe
-from .alert import alert_id, fingerprint, render, render_unchanged
+from .alert import alert_id, fingerprint, render, render_html, render_unchanged, render_unchanged_html
 from .engine import ScanResult, run_scan
 from .params import Params
 from .profile import Profile
@@ -110,9 +110,12 @@ def scan(conn, source, profile: Profile, params: Params, slot: str | None = None
     repeat = prev is not None and prev["fingerprint"] == fp
     if repeat and params.notify.get("repeat_policy", "brief") == "brief":
         subject, text = render_unchanged(res, aid, created, prev)
+        html = render_unchanged_html(res, aid, created, prev)
     else:
         subject, text = render(res, aid, created)
+        html = render_html(res, aid, created)
     row = alert_row(res, aid, label, slot_ts, created, fp, subject, text)
+    row["html"] = html
     row["repeat_of"] = prev["alert_id"] if repeat else None
     store.insert(conn, "alert", **row)
     finished = source.now()

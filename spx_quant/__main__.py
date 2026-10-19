@@ -18,7 +18,7 @@
   decide ID accepted|declined|modified|closed [--contracts N] [--reason TEXT] [--source S] [--ref R]
   reply ID TEXT [--ref R]                       record a decision from an email reply's text
   show ID                                       one alert with its deliveries, decisions and marks
-  report [--end YYYY-MM-DD] [--days 7] [--out FILE]   weekly report (US-11, US-12)
+  report [--end YYYY-MM-DD] [--days 7] [--out FILE] [--html FILE]   weekly report (US-11, US-12)
 """
 from __future__ import annotations
 
@@ -158,7 +158,7 @@ def cmd_notify_test(a, params) -> int:
         if ch is None:
             print("profile notify channel is 'none'")
             return 1
-        ch.send("[SPX Quant] test message", f"Test from spx-quant {__version__} at {clock.fmt(clock.now_utc())}.")
+        ch.send("[StormGlass] test message", f"Test from spx-quant {__version__} at {clock.fmt(clock.now_utc())}.")
     except Exception as e:
         print(f"failed: {type(e).__name__}: {e}")
         return 1
@@ -244,10 +244,13 @@ def cmd_show(a, params) -> int:
 def cmd_report(a, params) -> int:
     end = date.fromisoformat(a.end) if a.end else clock.market_date(clock.now_utc())
     text = report.weekly(store.connect(a.db), params, end, a.days)
+    if a.html:
+        Path(a.html).write_text(report.weekly_html(store.connect(a.db), params, end, a.days), encoding="utf-8")
+        print(f"wrote {a.html}")
     if a.out:
         Path(a.out).write_text(text, encoding="utf-8")
         print(f"wrote {a.out}")
-    else:
+    elif not a.html:
         print(text, end="")
     return 0
 
@@ -348,6 +351,7 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("--end", help="last market date of the week (default: today)")
     q.add_argument("--days", type=int, default=7)
     q.add_argument("--out")
+    q.add_argument("--html", help="also write the report as an HTML email body to this file")
     q.set_defaults(fn=cmd_report)
 
     q = sub.add_parser("margin-check")

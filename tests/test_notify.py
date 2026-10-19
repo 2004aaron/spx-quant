@@ -125,10 +125,10 @@ class DeliveryTest(unittest.TestCase):
 
     def test_discord_chunks_fit_the_limit(self):
         body = "\n".join(f"line {i} " + "x" * 80 for i in range(100))
-        chunks = notify.DiscordChannel.chunks("[SPX Quant X] PROPOSAL: something", body)
+        chunks = notify.DiscordChannel.chunks("[StormGlass X] PROPOSAL: something", body)
         self.assertGreater(len(chunks), 1)
         self.assertTrue(all(len(c) <= 2000 for c in chunks))
-        self.assertTrue(chunks[0].startswith("**[SPX Quant X]"))
+        self.assertTrue(chunks[0].startswith("**[StormGlass X]"))
 
     def test_email_channel_reads_the_environment(self):
         env = {"SPX_QUANT_SMTP_HOST": "smtp.example.com", "SPX_QUANT_SMTP_USER": "u", "SPX_QUANT_SMTP_PASSWORD": "p"}

@@ -39,7 +39,7 @@ class CliTest(unittest.TestCase):
 
         code, out = self.run_cli("scan", "--slot", "13:25", "--no-send", "--replay", str(REPLAY), "--now", EOD)
         self.assertEqual(code, 0, out)
-        self.assertIn("SPX QUANT | PROPOSAL", out)
+        self.assertIn("STORMGLASS | PROPOSAL", out)
 
         code, out = self.run_cli("log", "--from", "2026-09-28", "--to", "2026-09-28")
         self.assertIn("1 alert(s)", out)
