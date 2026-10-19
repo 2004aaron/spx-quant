@@ -15,10 +15,12 @@ Westmont College CS 195 Senior Seminar capstone, Fall 2026. Student: Aaron Wu
 The project started as SPX Quant. The Python package and the commands keep that
 working name (`python -m spx_quant`), so existing scripts and schedules still run.
 
-## Alpha release (v0.6-alpha, October 19, 2026)
+## Alpha release (v0.6.1-alpha, October 19, 2026)
 
 Alpha covers US-01 to US-06 from the final proposal (September 27, 2026), plus the
-scan log and the scripts that check the Alpha key results. Every acceptance criterion
+scan log and the scripts that check the Alpha key results. v0.6.1 adds the October 19
+rules pivot (an inverted VIX curve is now information, not a stand-down) and the final
+Alpha key results. Every acceptance criterion
 has a test; the map is in [`docs/story-map.md`](docs/story-map.md).
 
 | Story | What it does | Module |
@@ -54,7 +56,7 @@ Python 3.11 or newer. No third-party packages, no install step.
 ```bash
 git clone https://github.com/2004aaron/spx-quant.git
 cd spx-quant
-python -m unittest discover -s tests -t . -v        # 133 tests, about 15 seconds
+python -m unittest discover -s tests -t . -v        # 138 tests, about 10 seconds
 
 python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 --max-worst-case 0.05
 python -m spx_quant profile show
