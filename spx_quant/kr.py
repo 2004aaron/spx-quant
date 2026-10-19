@@ -1,8 +1,11 @@
-"""Alpha key-result checks (proposal section 6). Each prints a markdown table meant to be committed.
+"""Key-result checks (proposal section 6). Each prints a markdown table meant to be committed.
 
   a1  A-KR1  days on which every scheduled scan produced a complete proposal or stand-down
   a2  A-KR2  proposals that fail an entry check; --plant proves each check catches a bad row
   a3  A-KR3  24 sizing cases (4 account sizes x 2 margin types x 3 regimes), zero violations
+  b1  B-KR1  delivered messages within 5 minutes of scan completion
+  b2  B-KR2  scheduled scans that produced a delivered message
+  b3  B-KR3  delivered alerts that carry their quotes, data timestamp and output timestamp
 """
 from __future__ import annotations
 
@@ -19,8 +22,9 @@ from .sizing import cents, delta_theta_ok
 from .strategies import MULTIPLIER, SPY_WEIGHT, years_to
 from .synthetic import SyntheticSource
 
-CHECKS = ("a1", "a2", "a3")
-WINDOW = (date(2026, 10, 5), date(2026, 10, 16))
+CHECKS = ("a1", "a2", "a3", "b1", "b2", "b3", "rc1", "rc2", "rc3", "s1")
+WINDOWS = {"a": (date(2026, 10, 5), date(2026, 10, 16)), "b": (date(2026, 10, 30), date(2026, 11, 13)),
+           "r": (date(2026, 10, 5), date(2026, 12, 8)), "s": (date(2026, 10, 5), date(2026, 12, 8))}
 A3_SIZES = (100_000, 150_000, 500_000, 1_500_000)  # portfolio margin needs $100,000+
 A3_MARGINS = ("reg_t", "portfolio")
 A3_REGIMES = (("low", 14.5), ("normal", 17.5), ("elevated", 24.0))
@@ -159,7 +163,7 @@ def _plant_rows(conn, params: Params, day: date) -> dict[str, str]:
                 delta_per_lot=0.0, theta_per_lot=150.0, risk={"pop": 0.8, "ev": 100.0, "worst_case": -10000.0},
                 reasons=[], codes=[], profile={"net_liq": 150000.0, "bp_cap_pct": 0.08, "delta_theta_limit": 2.0,
                                                "max_worst_case_pct": 0.10},
-                subject="planted", text="planted")
+                fingerprint="plant", subject="planted", text="planted")
     bad = {
         "bp_cap": {"bp_per_lot": 12000.01, "bp_total": 12000.01},
         "delta_theta": {"delta_per_lot": 80.0},
@@ -278,8 +282,186 @@ def a3(params: Params) -> tuple[str, bool]:
     return text, len(rows) == 24 and total_v == 0 and total_w == 0
 
 
-def run(which: str, conn, params: Params, start: date | None, end: date | None, plant: bool = False) -> tuple[str, bool]:
+# ---------------------------------------------------------------- Beta
+
+def _delivered(conn, start: date, end: date) -> list[dict]:
+    return store.rows(conn, """SELECT d.*, a.kind, a.text, a.legs, a.slot, a.market_date, s.finished_ts
+                               FROM delivery d JOIN alert a ON a.alert_id = d.alert_id
+                               LEFT JOIN scan s ON s.alert_id = a.alert_id
+                               WHERE d.status = 'delivered' AND a.market_date BETWEEN ? AND ? ORDER BY d.id""",
+                      (start.isoformat(), end.isoformat()))
+
+
+def b1(conn, params: Params, start: date, end: date, minutes: float = 5) -> tuple[str, bool]:
+    rows, on_time = [], 0
+    ds = _delivered(conn, start, end)
+    for d in ds:
+        lag = (_ts(d["delivered_ts"]) - _ts(d["finished_ts"])).total_seconds() / 60 if d["finished_ts"] else None
+        ok = lag is not None and lag <= minutes
+        on_time += ok
+        rows.append([d["alert_id"], d["channel"], f"{lag:.2f}" if lag is not None else "n/a", "yes" if ok else "no"])
+    pct = on_time / len(ds) if ds else 0.0
+    text = f"### B-KR1 delivered within {minutes:g} minutes of scan completion, {start} to {end}\n\n"
+    text += _table(["alert", "channel", "minutes", "on time"], rows) if rows else "_no deliveries in the window_"
+    text += f"\n\n**{on_time} of {len(ds)} on time ({pct:.0%})** (target 95%)."
+    return text, bool(ds) and pct >= 0.95
+
+
+def b2(conn, params: Params, start: date, end: date) -> tuple[str, bool]:
+    slots = list(params.schedule["slots"])
+    rows, good, total = [], 0, 0
+    for d in trading_days(start, end):
+        for s in slots:
+            total += 1
+            got = store.rows(conn, """SELECT d.status FROM scan sc JOIN delivery d ON d.alert_id = sc.alert_id
+                                      WHERE sc.slot = ? AND sc.market_date = ?""", (s, d.isoformat()))
+            statuses = sorted({g["status"] for g in got})
+            ok = "delivered" in statuses
+            good += ok
+            rows.append([d.isoformat(), s, ", ".join(statuses) or "no scan", "yes" if ok else "no"])
+    text = f"### B-KR2 scheduled scans that sent a message, {start} to {end}\n\n"
+    text += _table(["date", "slot PT", "delivery statuses", "message sent"], rows)
+    text += f"\n\n**{good} of {total} scheduled scans sent a message** (target {total} of {total})."
+    return text, good == total and total > 0
+
+
+def b3_fields(d: dict) -> list[str]:
+    t = d["text"] or ""
+    missing = []
+    for label in ("Output: ", "Data as of: "):
+        line = next((l for l in t.splitlines() if l.startswith(label)), "")
+        if not line or "n/a" in line[:len(label) + 4]:
+            missing.append(label.strip(": "))
+    for sym in ("SPX ", "VIX9D ", "VIX ", "VIX3M "):
+        if sym not in t:
+            missing.append(sym.strip())
+    if d["kind"] == "proposal":
+        for l in d["legs"] or []:
+            line = next((x for x in t.splitlines() if l["sym"] in x), "")
+            if "bid " not in line or "ask " not in line:
+                missing.append(f"{l['sym']} bid/ask")
+    return missing
+
+
+def b3(conn, params: Params, start: date, end: date) -> tuple[str, bool]:
+    rows, good = [], 0
+    seen = set()
+    for d in _delivered(conn, start, end):
+        if d["alert_id"] in seen:
+            continue
+        seen.add(d["alert_id"])
+        miss = b3_fields(d)
+        good += not miss
+        rows.append([d["alert_id"], d["kind"], "complete" if not miss else "missing " + ", ".join(miss)])
+    n = len(rows)
+    text = f"### B-KR3 alerts carrying quotes, data timestamp and output timestamp, {start} to {end}\n\n"
+    text += _table(["alert", "kind", "fields"], rows) if rows else "_no delivered alerts in the window_"
+    text += f"\n\n**{good} of {n} complete ({good / n:.0%})**" if n else "\n\n**0 alerts**"
+    text += " (target 100%)."
+    return text, n > 0 and good == n
+
+
+# ---------------------------------------------------------------- RC and stretch
+
+def rc1(conn, params: Params, start: date, end: date) -> tuple[str, bool]:
+    """Proposals whose worst daily mark met or beat the worst case stated at proposal time."""
+    from . import report
+    pos = [p for p in report.positions(conn, end) if not p.repeat and p.entered >= start.isoformat() and p.worst_mark is not None]
+    hits = [p for p in pos if p.hit]
+    rows = [[p.alert_id, f"{p.predicted:,.2f}" if p.predicted is not None else "n/a", f"{p.worst_mark:,.2f}",
+             f"{p.reached:.0%}" if p.reached is not None else "n/a", "YES" if p.hit else "no"] for p in pos]
+    pct = len(hits) / len(pos) if pos else 0.0
+    text = f"### RC-KR1 proposals that reached their stated worst case, {start} to {end}\n\n"
+    text += _table(["alert", "predicted worst case", "worst daily mark", "reached", "hit"], rows) if rows else "_no marked proposals_"
+    text += f"\n\n**{len(hits)} of {len(pos)} marked proposals ({pct:.0%})** (target under 10%, at least 20 marked)."
+    return text, len(pos) >= 20 and pct < 0.10
+
+
+def rc2(conn, params: Params, start: date, end: date, broker: str | None = None) -> tuple[str, bool]:
+    """Engine mark vs the broker's mark for the same position at the same close, as % of credit.
+    The broker marks come from a CSV the investor keeps: alert_id,market_date,broker_pnl."""
+    import csv
+    from . import decisions
+    text = f"### RC-KR2 engine marks against broker marks, {start} to {end}\n\n"
+    if not broker:
+        return text + "_no broker marks file given; run with --broker marks.csv (columns alert_id,market_date,broker_pnl)_", False
+    rows, errs = [], []
+    with open(broker, newline="", encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            d = r["market_date"].strip()
+            if not (start.isoformat() <= d <= end.isoformat()):
+                continue
+            a = store.get_alert(conn, r["alert_id"].strip())
+            m = store.rows(conn, "SELECT pnl FROM mark WHERE alert_id = ? AND market_date = ? ORDER BY id DESC LIMIT 1",
+                           (r["alert_id"].strip(), d))
+            if a is None or not m or not a["credit"]:
+                rows.append([r["alert_id"], d, "n/a", r["broker_pnl"], "no engine mark for this alert and date"])
+                continue
+            from .report import end_of_day
+            taken = decisions.taken_size(conn, a, end_of_day(date.fromisoformat(d))) or a["contracts"]
+            scale = taken / a["contracts"]
+            engine, brk = m[0]["pnl"] * scale, float(r["broker_pnl"])
+            err = abs(engine - brk) / (a["credit"] * scale)
+            errs.append(err)
+            rows.append([r["alert_id"], d, f"{engine:,.2f}", f"{brk:,.2f}", f"{err:.1%}"])
+    mean = sum(errs) / len(errs) if errs else None
+    text += _table(["alert", "date", "engine P/L", "broker P/L", "error (% of credit)"], rows) if rows else "_no broker marks in the window_"
+    text += f"\n\n**mean error {mean:.1%} over {len(errs)} comparisons** (target 5.0% or less)." if errs else "\n\n**no comparisons**"
+    return text, bool(errs) and mean <= 0.05
+
+
+def rc3(conn, params: Params, start: date, end: date) -> tuple[str, bool]:
+    """Delivered proposals carrying the investor's decision, and the report agreeing with them."""
+    from . import decisions, report
+    asof = report.end_of_day(end)
+    delivered = store.rows(conn, """SELECT DISTINCT a.alert_id FROM delivery d JOIN alert a ON a.alert_id = d.alert_id
+                                    WHERE d.status = 'delivered' AND a.kind = 'proposal' AND a.repeat_of IS NULL
+                                    AND a.market_date BETWEEN ? AND ? ORDER BY a.alert_id""", (start.isoformat(), end.isoformat()))
+    rows, missing = [], 0
+    for r in delivered:
+        d = decisions.latest(conn, r["alert_id"], asof)
+        missing += d is None
+        rows.append([r["alert_id"], d["decision"] if d else "**missing**", (d or {}).get("source") or ""])
+    active_report = {p.alert_id for p in report.positions(conn, end) if p.active}
+    active_log = {h.alert_id for h in decisions.held(conn, asof)}
+    mism = sorted(active_report ^ active_log)
+    text = f"### RC-KR3 decisions on delivered proposals, {start} to {end}\n\n"
+    text += _table(["alert", "decision", "source"], rows) if rows else "_no delivered proposals_"
+    text += f"\n\n**{missing} missing decisions, {len(mism)} mismatches between the report's active positions and the decisions**"
+    text += (f" ({', '.join(mism)})" if mism else "") + " (target at most 1 missing, 0 mismatches)."
+    return text, bool(delivered) and missing <= 1 and not mism
+
+
+def s1(conn, params: Params, start: date, end: date) -> tuple[str, bool]:
+    """Proposals whose buying power exceeded what was left after taken positions, recomputed
+    from the decisions on file when each proposal was made (not from the sizer's own field)."""
+    from . import decisions
+    rows, bad = [], 0
+    props = store.rows(conn, """SELECT * FROM alert WHERE kind = 'proposal' AND market_date BETWEEN ? AND ?
+                                ORDER BY created_ts, id""", (start.isoformat(), end.isoformat()))
+    for a in props:
+        at = clock.parse_utc(a["created_ts"])
+        held = [h for h in decisions.held(conn, at) if h.alert_id != a["alert_id"]]
+        avail = (a["profile"] or {}).get("net_liq", 0.0) - sum(h.bp for h in held)
+        over = cents(a["bp_total"] or 0.0) > cents(avail)
+        bad += over
+        rows.append([a["alert_id"], f"${a['bp_total']:,.2f}", f"${avail:,.2f}", len(held), "OVER" if over else "ok"])
+    text = f"### S-KR1 proposals over remaining buying power, {start} to {end}\n\n"
+    text += _table(["alert", "BP used", "available", "open taken positions", "check"], rows) if rows else "_no proposals_"
+    text += f"\n\n**{bad} of {len(props)} proposals over** (target 0 across at least 10)."
+    return text, len(props) >= 10 and bad == 0
+
+
+def run(which: str, conn, params: Params, start: date | None, end: date | None, plant: bool = False,
+        broker: str | None = None) -> tuple[str, bool]:
     if which == "a3":
         return a3(params)
-    start, end = start or WINDOW[0], end or WINDOW[1]
-    return a1(conn, params, start, end) if which == "a1" else a2(conn, params, start, end, plant)
+    s, e = WINDOWS[which[0]]
+    start, end = start or s, end or e
+    if which == "a1":
+        return a1(conn, params, start, end)
+    if which == "a2":
+        return a2(conn, params, start, end, plant)
+    if which == "rc2":
+        return rc2(conn, params, start, end, broker)
+    return {"b1": b1, "b2": b2, "b3": b3, "rc1": rc1, "rc3": rc3, "s1": s1}[which](conn, params, start, end)

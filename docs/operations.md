@@ -6,43 +6,111 @@
 | --- | --- | --- | --- |
 | scan | 10:30 | `scan --slot 10:30` | A-KR1 morning scan; quotes are about 15 minutes old |
 | scan | 13:25 | `scan --slot 13:25` | end-of-day scan, 10 minutes after the 13:15 SPX options close |
+| mark | 13:45 | `mark` | values every logged proposal at closing quotes (US-09); 1:45 PM matches the user flow diagram |
 
 The diagram's log example shows the second scan at 12:50. That sample is labeled
 illustrative, and A-KR2 checks end-of-day proposals against the next morning's
 board, which only makes sense for a scan after the close, so the build keeps 13:25.
 Change `schedule.slots` and `schedule.eod_slot` together if you want 12:50.
 
-Weekends and NYSE holidays log a `market_closed` scan. A scan that starts more than
-30 minutes after its slot says so in its output and logs a `scan_late` event. On the
-early-close days (November 27 and December 24, 2026) SPX options stop at 10:15 PT, so
-the 13:25 scan answers NO ADVICE (stale).
+Weekends and NYSE holidays log a `market_closed` scan and send nothing. A scan that
+starts more than 30 minutes after its slot says so in the alert and logs a
+`scan_late` event. On the early-close days (November 27 and December 24, 2026) SPX
+options stop at 10:15 PT, so the 13:25 scan answers NO ADVICE (stale); the mark job
+accepts any board updated within 20 minutes of that day's close, so it still runs.
 
 ## Cloud schedule (from October 8, 2026)
 
-Cloud scheduled tasks run the scans so the laptop doesn't have to be on:
+Cloud scheduled tasks run the scans so the laptop does not have to be on:
 
 | Task | Time (PT) | Steps |
 | --- | --- | --- |
-| 10:30 scan | weekdays 10:30 | clone `main`, load the log, `scan --slot 10:30`, save the log |
-| end-of-day scan | weekdays 13:25 | same with `scan --slot 13:25`, then `kr a1` |
+| SPX Quant 10:30 scan | weekdays 10:30 | clone `main`, load the log, `scan --slot 10:30`, send the outbox through Gmail and record each send, save the log |
+| SPX Quant end-of-day scan and mark | weekdays 13:25 | same, with `scan --slot 13:25`, then record decisions from email replies, `mark`, save the log, `kr a1` |
+| SPX Quant weekly report | Fridays 13:50 | clone `main`, load the log, `report`, email it (read-only; the log is not changed) |
 
-Each run starts in an empty container, so the log lives between runs as a project
-document: a SQL dump that ends with a sha256 line. `deploy/cloud/logdoc.py load`
-refuses a copy whose checksum doesn't match, so a damaged copy never replaces the log.
-The profile ($150,000, portfolio margin) is set fresh on every run and is never
-committed (QR-5). The 13:25 run has about 20 minutes of slack: after the 13:15 close
-the quotes age past the 30-minute limit around 13:45.
+Alerts go out through the task's Gmail connector (channel `gmail`): the scan queues
+the message in the log, `outbox` lists what is queued, and `delivered ID --ref MSG`
+records the send so B-KR1 can time it. A failed send is recorded with
+`delivered ID --failed ERROR`; after three failures the alert leaves the outbox and a
+`delivery_failed` event goes into the weekly report. No password or webhook is stored.
 
-## Setup on one machine
+Each queued message in `outbox` has a `body` (plain text, the logged record) and an
+`html` field (the same content with bold headings and tables). Send `html` as Gmail's
+`htmlBody` and `body` as the plain-text alternative. Alerts logged before the HTML
+version have `html: null`; send those as plain text. For the weekly report,
+`report --out report.txt --html report.html` writes both. Samples are in
+`docs/sample-alert.html` and `docs/sample-no-change.html`. The Gmail connector strips
+`<style>` blocks, `class` attributes and the `background` shorthand, so the HTML uses
+inline styles, `background-color` and `bgcolor` only (`tests/test_htmlmail.py` checks it).
+
+Decisions come back as email replies. Reply to an alert with ACCEPTED, DECLINED,
+MODIFIED <contracts> or (later) CLOSED as the first word; the end-of-day task finds
+the reply and runs `reply ID "<text>" --ref <reply id>`, which never counts the same
+reply twice. `decide` does the same from the command line.
+
+Each run starts in an empty container, so the log lives between runs as the project
+document `claude/quant-log.sql`: a SQL dump that ends with a sha256 line.
+`deploy/cloud/logdoc.py load` refuses a copy whose checksum does not match, so a
+damaged copy never replaces the log. The profile ($150,000, portfolio margin) is set
+fresh on every run and is never committed (QR-6). The 13:25 run has about 20 minutes
+of slack: after the 13:15 close the quotes age past the 30-minute limit around 13:45.
+
+The older "SPX Quant shadow log" task (2:30 PM PT) keeps running beside these; it
+writes its own documents and does not count toward A-KR1.
+
+## Setup on one machine (through Alpha)
 
 ```powershell
-python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08
+python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 `
+    --notify email --email-to you@example.com
 .\deploy\windows\register_tasks.ps1
 ```
 
 The PC must be on Pacific time. The script sets WakeToRun so a sleeping laptop wakes
-for the slot; a laptop that is shut down still misses it, which is why the scans also
-run as cloud tasks.
+for the slot; a laptop that is shut down still misses it, which is why Beta moves to a
+server.
+
+## Beta host (from November 16)
+
+A small Linux VM (proposal 5.5 prices a Hetzner CX23). Install Python 3.11+, clone the
+repo, set the clock to Pacific, then edit and load `deploy/cron/crontab.example`.
+Deploying an update is `git pull`; cron starts a fresh process each slot.
+
+## Notification channels
+
+Credentials are environment variables, never files in the repo (QR-5).
+
+| Channel | Variables | Notes |
+| --- | --- | --- |
+| email | `SPX_QUANT_SMTP_HOST`, `SPX_QUANT_SMTP_PORT` (587 STARTTLS, 465 SSL), `SPX_QUANT_SMTP_USER`, `SPX_QUANT_SMTP_PASSWORD`, optional `SPX_QUANT_SMTP_FROM` | Gmail needs an app password (Google Account, Security, App passwords) |
+| discord | `SPX_QUANT_DISCORD_WEBHOOK` | channel settings, Integrations, Webhooks, New Webhook, copy URL |
+| gmail | none | queued in the log and sent by the cloud task's Gmail connector (`outbox`, `delivered`) |
+
+`python -m spx_quant notify-test` sends one message on the profile's channel. The user
+flow diagram shows email as the default and Discord as the alternative; confirm with
+the mentor by October 9 (US-07).
+
+## Repeat policy: short "no change" messages (decided 2026-09-28)
+
+US-07-AC2 and the diagram (Part 4 screen 9, Part 5 notes) say an unchanged scan sends
+no second message. B-KR2 says every scheduled scan sends one. The build follows
+B-KR2 with `notify.repeat_policy = "brief"`: when a scan repeats the last delivered
+decision, it sends a short NO CHANGE message instead of the full alert. The note still
+carries the quotes, both timestamps and, for a proposal, each leg's bid and ask, so
+B-KR3 holds. The log stores exactly the text that was sent, plus `repeat_of` pointing
+at the earlier alert.
+
+`repeat_policy = "suppress"` restores silence (and fails B-KR2).
+
+Proposal wording to update so the documents agree:
+* US-07-AC2: "then no second full alert is sent; a short no-change notice names the
+  earlier alert."
+* Diagram Part 5 note 2 and the log row "11-03 12:50 same, no alert" say the same
+  thing the old way.
+* Diagram Part 5 note 1 says skipped scans, no-fit results and unset assumptions send
+  nothing. The build sends them as NO ADVICE or STAND DOWN messages, because B-KR2
+  counts a "no advice" notice as a message.
 
 ## Evidence commands
 
@@ -50,7 +118,19 @@ run as cloud tasks.
 python -m spx_quant kr a1                    # Oct 5-16 by default
 python -m spx_quant kr a2 --plant            # includes the planted-row proof
 python -m spx_quant kr a3 > docs/results/a-kr3.md
+python -m spx_quant kr b1                    # Oct 30 - Nov 13 by default
+python -m spx_quant kr b2
+python -m spx_quant kr b3
+python -m spx_quant kr rc1                   # Oct 5 - Dec 8: proposals that reached their worst case
+python -m spx_quant kr rc2 --broker marks.csv  # engine marks vs your tastytrade marks
+python -m spx_quant kr rc3                   # decisions on delivered proposals
+python -m spx_quant kr s1                    # proposals over remaining buying power
+python -m spx_quant report --end 2026-10-16  # the weekly report for any week
 ```
+
+RC-KR2 needs the broker's numbers, which only you can see: for positions you took,
+write the P/L tastytrade shows at the close into a CSV with the columns
+`alert_id,market_date,broker_pnl`, one row per position per day you record.
 
 Each prints a markdown table. Commit the output. The exit code is 0 only when the
 target is met.
@@ -129,3 +209,6 @@ Pilot profile: $150,000, portfolio margin (standard tier).
    next morning's: one night of theta moves a strangle's price by more than its whole
    bid-ask width, so an overnight credit check could never pass. Worth one sentence in
    the proposal's change log.
+3. **Loss stop definition.** `management.loss_multiple = 2.0` means cost to close is at
+   least twice the credit (a loss of one credit), matching the shadow runner. Some
+   traders mean a loss of two credits.

@@ -47,6 +47,16 @@ before the cloud schedule started. October 16 counts on the end-of-day scan from
 Beta (November 16) and RC (December 9) stories ship in later releases, on the schedule
 in the proposal.
 
+## Beta work in progress (this branch)
+
+This branch brings back the Beta modules that came off `main` for the Alpha release
+(Gmail alerts, decisions, daily marks, the weekly report, remaining buying power) and
+adds HTML email bodies. Every alert and the weekly report now has an HTML version with
+bold section headings and tables (the trade, account limits, risk, the market, the
+ranking and the rejected candidates) next to the plain text, which stays the logged
+record and the plain-text alternative. Samples: [`docs/sample-alert.html`](docs/sample-alert.html),
+[`docs/sample-no-change.html`](docs/sample-no-change.html).
+
 ## Run it
 
 Python 3.11 or newer. No third-party packages, no install step.
