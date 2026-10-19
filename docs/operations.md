@@ -200,6 +200,8 @@ Pilot profile: $150,000, portfolio margin (standard tier).
    next morning's: one night of theta moves a strangle's price by more than its whole
    bid-ask width, so an overnight credit check could never pass. Worth one sentence in
    the proposal's change log.
-3. **Loss stop definition.** `management.loss_multiple = 2.0` means cost to close is at
+3. **Loss stop definition.** Off by default since the 2026-10-19 rules pivot
+   (`management.exit_rules = ["profit_target"]`; see docs/results/rules-pivot.md). When
+   switched on, `management.loss_multiple = 2.0` means cost to close is at
    least twice the credit (a loss of one credit), matching the shadow runner. Some
    traders mean a loss of two credits.
