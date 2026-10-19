@@ -36,12 +36,13 @@ has a test; the map is in [`docs/story-map.md`](docs/story-map.md).
 
 | Key result | Result | Band | Output |
 | --- | --- | --- | --- |
-| A-KR1 both daily scans complete | 6 of 10 trading days | D | [`docs/results/a-kr1.md`](docs/results/a-kr1.md) |
-| A-KR2 proposals that fail an entry check | 0 of 12; 8 of 8 planted bad rows caught | A | [`docs/results/a-kr2.md`](docs/results/a-kr2.md) |
+| A-KR1 both daily scans complete | 7 of 10 trading days | D | [`docs/results/a-kr1.md`](docs/results/a-kr1.md) |
+| A-KR2 proposals that fail an entry check | 0 of 13; 8 of 8 planted bad rows caught | A | [`docs/results/a-kr2.md`](docs/results/a-kr2.md) |
 | A-KR3 sizing matrix | 24 cases, 0 violations | A | [`docs/results/a-kr3.md`](docs/results/a-kr3.md) |
 
 Bands come from the grading table in the final proposal. A-KR1 is missing October 5 to 7,
-before the cloud schedule started, and the October 16 end-of-day scan.
+before the cloud schedule started. October 16 counts on the end-of-day scan from the second log;
+[`docs/results/a-kr1.md`](docs/results/a-kr1.md) says how the two logs were combined.
 
 Beta (November 16) and RC (December 9) stories ship in later releases, on the schedule
 in the proposal.
