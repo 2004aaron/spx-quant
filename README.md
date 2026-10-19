@@ -15,7 +15,7 @@ Westmont College CS 195 Senior Seminar capstone, Fall 2026. Student: Aaron Wu
 The project started as SPX Quant. The Python package and the commands keep that
 working name (`python -m spx_quant`), so existing scripts and schedules still run.
 
-## Alpha release (v0.6-alpha, October 19, 2026)
+## Alpha release (v0.6.1-alpha, October 19, 2026)
 
 Alpha covers US-01 to US-06 from the final proposal (September 27, 2026), plus the
 scan log and the scripts that check the Alpha key results. Every acceptance criterion
