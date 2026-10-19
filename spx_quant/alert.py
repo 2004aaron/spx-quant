@@ -1,10 +1,12 @@
-"""Alert identity and plain-text rendering (US-03 to US-06, QR-6).
+"""Alert identity and plain-text rendering (US-03 to US-05, QR-6, B-KR3).
 
-Every field is plain text; nothing is carried by colour or layout. Every alert
+Every field is plain text; nothing is carried by colour or layout. Every message
 carries the quotes it was built on, the data timestamp and the output timestamp.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import textwrap
 from datetime import datetime
 
@@ -14,6 +16,18 @@ from .engine import Candidate, ScanResult
 
 KIND_TITLE = {"proposal": "PROPOSAL", "stand_down": "STAND DOWN", "no_advice": "NO ADVICE"}
 CURVE_ORDER = (("vix9d", "VIX9D"), ("vix", "VIX"), ("vix3m", "VIX3M"), ("vix6m", "VIX6M"))
+
+
+def fingerprint(res: ScanResult) -> str:
+    """Same conditions and same proposal -> same fingerprint (US-07-AC2). Numbers that drift every
+    scan (VIX to the cent, credit) are left out; the decision and the contracts are in."""
+    body = {"kind": res.kind, "codes": sorted(res.codes)}
+    if res.regime is not None:
+        body["regime"] = [res.regime.state, res.regime.bucket]
+    if res.best:
+        p = res.best.position
+        body["trade"] = [p.strategy, p.ticker, sorted(l.sym for l in p.legs), res.best.sized.contracts]
+    return hashlib.sha1(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
 
 def alert_id(res: ScanResult, day) -> str:
@@ -69,6 +83,33 @@ def _header(res: ScanResult, title: str, aid: str, created_ts: datetime) -> list
     return lines + (["", "MARKET"] + mk if mk else [])
 
 
+REPLY_LINE = ("To record your decision, reply with ACCEPTED, DECLINED or MODIFIED <contracts> as the first word "
+              "(for example: modified 1). Later, reply CLOSED if you exit early.")
+
+
+def render_unchanged(res: ScanResult, aid: str, created_ts: datetime, prev: dict) -> tuple[str, str]:
+    """Short message for a scan that repeats the last delivered decision. It still carries the
+    quotes and both timestamps (B-KR3); the full detail stays in the log under this alert ID."""
+    since = f"{prev['alert_id']} ({clock.fmt(clock.parse_utc(prev['created_ts']))})"
+    lines = _header(res, "NO CHANGE", aid, created_ts) + [""]
+    if res.kind == "proposal":
+        c = res.best
+        p, s = c.position, c.sized
+        subject = f"[StormGlass {aid}] NO CHANGE: {p.label()} {p.ticker.lstrip('_')} {p.exp:%m/%d} x{s.contracts} still stands"
+        lines.append(f"NO CHANGE since {since}: same proposal, {p.label()} on {p.ticker.lstrip('_')} x{s.contracts}.")
+        lines += [_leg_line(c, l) for l in sorted(p.legs, key=lambda l: (l.right, l.strike))]
+        lines.append(f"  Credit now ${p.credit:,.2f} per lot at mid; worst case {_money(c.risk.worst_case)}.")
+        lines += ["", REPLY_LINE]
+    else:
+        what = "still STAND DOWN" if res.kind == "stand_down" else "still NO ADVICE"
+        subject = f"[StormGlass {aid}] NO CHANGE: {what.lower()}"
+        lines.append(f"NO CHANGE since {since}: {what}.")
+        lines += [f"  - {x}" for x in res.reasons]
+    lines += ["", f"Full detail: python -m spx_quant log --full --from {clock.market_date(created_ts)}",
+              "Model estimates with tagged assumptions, not investment advice. The engine never places orders."]
+    return subject[:200], "\n".join(lines)
+
+
 def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
     lines = _header(res, KIND_TITLE.get(res.kind, "SCAN"), aid, created_ts)
 
@@ -90,6 +131,9 @@ def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
             f"  Worst-case limit: ${s.worst_total:,.2f} of ${s.worst_limit:,.2f} ({prof.max_worst_case_pct:.0%} of net liq; "
             f"{s.contracts} x ${s.worst_per_lot:,.2f} stress loss per lot)",
         ]
+        if s.limited_by == "remaining buying power" and s.bp_contracts > s.contracts:
+            lines.append(f"  Sized down from {s.bp_contracts} to {s.contracts} lot{'' if s.contracts == 1 else 's'} for remaining buying power: "
+                         f"${s.available:,.2f} available after open positions.")
         if s.limited_by == "worst case" and s.bp_contracts > s.contracts:
             lines.append(f"  Sized down from {s.bp_contracts} to {s.contracts} lot{'' if s.contracts == 1 else 's'} so the worst case stays inside the limit; "
                          f"buying power alone would allow {s.bp_contracts}.")
@@ -119,6 +163,7 @@ def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
         lines += [_candidate_summary(i, x) for i, x in enumerate(res.ranked, 1)]
         why = f"  Ranked first because it has the highest expected annual return on buying power ({r.ann_return_bp:.1f}%)"
         lines.append(why + ("." if len(res.ranked) == 1 else f" of {len(res.ranked)} candidates that fit."))
+        lines += ["", REPLY_LINE]
     elif res.kind == "stand_down":
         subject = f"[StormGlass {aid}] STAND DOWN: {res.reasons[0] if res.reasons else 'no trade'}"
         lines += ["", "DO NOT ENTER"] + [f"  - {x}" for x in res.reasons]

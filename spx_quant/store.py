@@ -1,9 +1,8 @@
-"""SQLite scan log: three append-only tables, one file per user.
+"""SQLite log (US-08): six append-only tables, one file per user.
 
-Every scheduled scan and every proposal, stand-down or no-advice result is written
-here with the quotes behind it; the A-KR1 and A-KR2 checks read nothing else.
-Triggers refuse UPDATE and DELETE on every table, so the record cannot be edited
-after the fact. JSON columns hold structured detail; scalar columns hold what gets queried.
+Triggers refuse UPDATE and DELETE on every table, so the weekly report can be
+regenerated from the log and come out the same every time (US-11-AC1, QR-4).
+JSON columns hold structured detail; scalar columns hold what gets queried.
 """
 from __future__ import annotations
 
@@ -24,7 +23,14 @@ SCHEMA = {
                 market_date TEXT, kind TEXT NOT NULL, outcome TEXT, ticker TEXT, strategy TEXT, regime TEXT,
                 legs TEXT, contracts INTEGER, credit REAL, credit_per_lot REAL, bp_per_lot REAL, bp_total REAL,
                 delta_per_lot REAL, theta_per_lot REAL, risk TEXT, reasons TEXT, codes TEXT, quotes TEXT,
-                profile TEXT, candidates TEXT, subject TEXT, text TEXT""",
+                profile TEXT, candidates TEXT, fingerprint TEXT, repeat_of TEXT, subject TEXT, text TEXT""",
+    "delivery": """alert_id TEXT NOT NULL, channel TEXT, attempt INTEGER, sent_ts TEXT, delivered_ts TEXT,
+                   status TEXT NOT NULL, error TEXT, ref TEXT""",
+    "mark": """alert_id TEXT NOT NULL, market_date TEXT NOT NULL, ts TEXT, dte INTEGER, spot REAL, mid REAL,
+               pnl REAL, pnl_pct_credit REAL, settled INTEGER NOT NULL DEFAULT 0, exit_signal TEXT,
+               basis TEXT, legs TEXT""",
+    "feedback": """alert_id TEXT NOT NULL, received_ts TEXT, decision TEXT, reason TEXT, contracts INTEGER,
+                   source TEXT, ref TEXT""",
     "event": """ts TEXT NOT NULL, kind TEXT NOT NULL, detail TEXT, alert_id TEXT""",
 }
 JSON_COLS = {"detail", "leg_quotes", "regime", "legs", "risk", "reasons", "codes", "quotes", "profile", "candidates"}
@@ -93,7 +99,7 @@ def unique_alert_id(conn, aid: str) -> str:
 
 
 def alerts_between(conn, start: date, end: date, kind: str | None = None) -> list[dict]:
-    """Alerts whose market date falls in [start, end], in the order they were produced."""
+    """US-08-AC2: alerts whose market date falls in [start, end], in the order they were produced."""
     q = "SELECT * FROM alert WHERE market_date BETWEEN ? AND ?"
     args: list = [start.isoformat(), end.isoformat()]
     if kind:
@@ -104,6 +110,33 @@ def alerts_between(conn, start: date, end: date, kind: str | None = None) -> lis
 
 def get_alert(conn, alert_id: str) -> dict | None:
     return decode(conn.execute("SELECT * FROM alert WHERE alert_id = ?", (alert_id,)).fetchone())
+
+
+def last_delivered(conn) -> dict | None:
+    """The most recent alert that actually reached the investor."""
+    return decode(conn.execute("""SELECT a.* FROM delivery d JOIN alert a ON a.alert_id = d.alert_id
+                                  WHERE d.status = 'delivered' ORDER BY d.id DESC LIMIT 1""").fetchone())
+
+
+def last_delivered_fingerprint(conn) -> str | None:
+    a = last_delivered(conn)
+    return a["fingerprint"] if a else None
+
+
+def open_proposals(conn) -> list[dict]:
+    """Every logged proposal that has no settled mark yet, taken or not (US-09)."""
+    rows = conn.execute("""SELECT * FROM alert WHERE kind = 'proposal' AND alert_id NOT IN
+                           (SELECT alert_id FROM mark WHERE settled = 1) ORDER BY created_ts, id""")
+    return [decode(r) for r in rows]
+
+
+def marked_on(conn, alert_id: str, market_date: date) -> bool:
+    return conn.execute("SELECT 1 FROM mark WHERE alert_id = ? AND market_date = ?",
+                        (alert_id, market_date.isoformat())).fetchone() is not None
+
+
+def marks_for(conn, alert_id: str) -> list[dict]:
+    return [decode(r) for r in conn.execute("SELECT * FROM mark WHERE alert_id = ? ORDER BY market_date, id", (alert_id,))]
 
 
 def rows(conn, sql: str, args=()) -> list[dict]:

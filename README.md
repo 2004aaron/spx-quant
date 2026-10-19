@@ -43,8 +43,20 @@ has a test; the map is in [`docs/story-map.md`](docs/story-map.md).
 Bands come from the grading table in the final proposal. A-KR1 is missing October 5 to 7,
 before the cloud schedule started, and the October 16 end-of-day scan.
 
-Beta (November 16) and RC (December 9) stories ship in later releases, on the schedule
-in the proposal.
+## Beta work on main (from October 19)
+
+With Alpha released, the Beta and RC stories are back on `main` for the Beta window
+(October 30 to November 15). They were built in v0.5 and held back from the Alpha release.
+
+| Story | What it does | Module |
+| --- | --- | --- |
+| US-07 alerts | each scan queues one plain-text message in the log; Gmail (through the scheduled run) or Discord sends it; delivery recorded with retries | `notify.py`, `alert.py` |
+| US-08 append-only log | scan, alert, delivery, mark, feedback and event tables; updates and deletes refused | `store.py` |
+| US-09 daily marks | every open proposal marked at the closing quotes; settlement at expiration | `marks.py` |
+| US-10 decisions | accepted, declined, modified N or closed, from the CLI or an email reply | `decisions.py` |
+| US-11, US-12 weekly report | advisor book vs your book, predicted vs realized worst case, failures and anomalies | `report.py` |
+| US-13 remaining buying power (stretch) | sizes against buying power left after open positions | `sizing.py` |
+| Beta and RC KR scripts | B-KR1 to B-KR3, RC-KR1 to RC-KR3, S-KR1 | `kr.py` |
 
 ## Run it
 
@@ -53,7 +65,7 @@ Python 3.11 or newer. No third-party packages, no install step.
 ```bash
 git clone https://github.com/2004aaron/spx-quant.git
 cd spx-quant
-python -m unittest discover -s tests -t . -v        # 133 tests, about 15 seconds
+python -m unittest discover -s tests -t . -v        # 184 tests, about 15 seconds
 
 python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 --max-worst-case 0.05
 python -m spx_quant profile show
