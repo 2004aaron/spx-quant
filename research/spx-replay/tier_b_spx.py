@@ -230,10 +230,10 @@ def regime_lookup(cache: Path, params):
     return lookup
 
 
-def report(trades: list[Trade], delta: float, dte: int) -> tuple[str, dict]:
+def report(trades: list[Trade], delta: float, dte: int, underlying: str = "SPX") -> tuple[str, dict]:
     res = {f"{f}/{e}": summary(trades, (f, e)) for f, e in VARIANTS}
     fills = {"bidask": "bid/ask", "mid": "mid"}
-    lines = [f"## SPX short strangle, {delta:.0%} delta, ~{dte} DTE, 1 lot",
+    lines = [f"## {underlying} short strangle, {delta:.0%} delta, ~{dte} DTE, 1 lot",
              f"{trades[0].opened} to {trades[-1].opened}" if trades else "no trades", "",
              table([(f"{'Hold to expiry' if e == 'hold' else '50% profit target'}, {fills[f]} fills", res[f"{f}/{e}"])
                     for f, e in VARIANTS])]
@@ -262,10 +262,11 @@ def main() -> None:
     ap.add_argument("--dte", type=int, default=p.expiry["target_dte"])
     ap.add_argument("--cboe-cache", type=Path, default=ROOT / ".cache" / "cboe")
     ap.add_argument("--json", type=Path)
+    ap.add_argument("--underlying", default="SPX", help="label only; OptionsDX SPY files load the same way")
     a = ap.parse_args()
     lookup = regime_lookup(a.cboe_cache, p) if (a.cboe_cache / "VIX3M.csv").exists() else None
     trades = replay(a.data, a.every, a.delta, a.dte, p.expiry["dte_min"], p.expiry["dte_max"], lookup)
-    text, res = report(trades, a.delta, a.dte)
+    text, res = report(trades, a.delta, a.dte, a.underlying)
     print(text)
     if a.json:
         a.json.write_text(json.dumps(res, indent=1, default=str))
