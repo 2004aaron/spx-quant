@@ -21,17 +21,32 @@ def intrinsic(leg: dict, s: float) -> float:
     return max(0.0, s - leg["strike"]) if leg["right"] == "C" else max(0.0, leg["strike"] - s)
 
 
+EXIT_RULES = ("profit_target", "loss_stop", "defensive_exit", "tested_strike")
+
+
+def exit_rules(m: dict) -> tuple[str, ...]:
+    rules = tuple(m.get("exit_rules", EXIT_RULES))
+    unknown = [r for r in rules if r not in EXIT_RULES]
+    if unknown:
+        raise ValueError(f"management.exit_rules names unknown rules: {', '.join(unknown)}")
+    return rules
+
+
 def exit_signal(pnl_lot: float, cost_lot: float, credit_lot: float, dte: int, legs: list[dict],
                 board: dict, m: dict) -> str | None:
-    if credit_lot > 0 and pnl_lot >= m["profit_target"] * credit_lot:
+    """First enabled exit rule that fires, in a fixed order. Only management.exit_rules are checked:
+    the default is the 50% profit target alone (docs/results/rules-pivot.md)."""
+    on = exit_rules(m)
+    if "profit_target" in on and credit_lot > 0 and pnl_lot >= m["profit_target"] * credit_lot:
         return f"profit target ({pnl_lot / credit_lot:.0%} of credit)"
-    if credit_lot > 0 and cost_lot >= m["loss_multiple"] * credit_lot:
+    if "loss_stop" in on and credit_lot > 0 and cost_lot >= m["loss_multiple"] * credit_lot:
         return f"loss stop (cost to close {cost_lot / credit_lot:.1f}x credit)"
-    if dte <= m["defensive_dte"]:
+    if "defensive_exit" in on and dte <= m["defensive_dte"]:
         return f"defensive exit at {dte} DTE"
-    shorts = [abs(board[l["sym"]]["delta"]) for l in legs if l["qty"] < 0 and l["sym"] in board]
-    if shorts and max(shorts) >= m["tested_delta"]:
-        return f"short strike tested ({max(shorts):.2f} delta)"
+    if "tested_strike" in on:
+        shorts = [abs(board[l["sym"]]["delta"]) for l in legs if l["qty"] < 0 and l["sym"] in board]
+        if shorts and max(shorts) >= m["tested_delta"]:
+            return f"short strike tested ({max(shorts):.2f} delta)"
     return None
 
 
