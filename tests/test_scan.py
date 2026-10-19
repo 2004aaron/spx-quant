@@ -118,6 +118,13 @@ class StandDownTest(unittest.TestCase):
         _, rec = self.scan(SyntheticSource(12.0, "contango"))
         self.assertIn("VIX 12.0 below the 13 floor", rec.alert["reasons"][0])
 
+    def test_backwardation_scan_proceeds_and_notes_the_curve(self):
+        _, rec = self.scan(SyntheticSource(22.0, "backwardation"))
+        self.assertEqual(rec.result.regime.state, "backwardation")
+        self.assertNotIn("backwardation", rec.result.codes)
+        self.assertTrue(any("information only" in n for n in rec.result.notes), rec.result.notes)
+        self.assertIn("information only", rec.alert["text"])
+
     def test_us02_ac3_missing_vix3m_is_named_in_the_output(self):
         _, rec = self.scan(SyntheticSource(17.0, missing=("VIX3M",)))
         self.assertEqual(rec.result.outcome, "stand_down")

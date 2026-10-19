@@ -33,7 +33,7 @@ from . import __version__, calibrate, clock, decisions, kr, mark, notify, outbox
 from . import profile as prof
 from .data import cboe
 from .params import DEFAULT_PATH as PARAMS_PATH, load_params
-from .regime import classify, gate
+from .regime import advisories, classify, gate
 
 
 def _source(a, params):
@@ -92,6 +92,8 @@ def cmd_regime(a, params) -> int:
         print(f"  note: {s}")
     ok, reasons = gate(r, params)
     print("gate: GO" if ok and not stale else "gate: STAND DOWN\n  " + "\n  ".join(reasons + stale))
+    for n in advisories(r, params):
+        print(f"  note: {n}")
     return 0
 
 

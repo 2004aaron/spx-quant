@@ -16,6 +16,7 @@ IDs follow the final proposal (September 27, 2026). Run everything with
 | US-03-AC4 candidate exactly at the cap is allowed | `test_sizing_margin.SizingTest.test_us03_ac4_candidate_exactly_at_the_cap_is_allowed`, `test_one_cent_over_the_cap_is_refused` |
 | US-04-AC1 VIX 35 stands down naming the 28 ceiling | `test_regime.RegimeTest.test_us04_ac1_panic_names_the_ceiling`, `test_scan.StandDownTest.test_us04_ac1_ac3_panic_stands_down_and_is_logged` |
 | US-04-AC2 VIX 12 stands down naming the 13 floor | `test_regime.RegimeTest.test_us04_ac2_crushed_names_the_floor`, `test_scan.StandDownTest.test_us04_ac2_crushed_stands_down` |
+| US-04 backwardation is information, not a stand-down (rules pivot 2026-10-19) | `test_regime.RegimeTest.test_backwardation_is_information_not_a_stand_down`, `test_regime.RegimeTest.test_stand_down_rules_come_from_config`, `test_scan.StandDownTest.test_backwardation_scan_proceeds_and_notes_the_curve` |
 | US-04-AC3 stand-downs logged with timestamp, regime, reasons | `test_scan.StandDownTest.test_us04_ac1_ac3_panic_stands_down_and_is_logged` |
 | US-05-AC1 every risk field present with units | `test_analytics.RiskTest.test_us05_ac1_every_risk_field_is_present`, `test_scan.ProposalTest.test_us05_ac1_ac2_risk_block_labeled_with_units_and_assumptions` |
 | US-05-AC2 assumptions paragraph under the risk block | `test_analytics.RiskTest.test_us05_ac2_assumptions_are_stated` |

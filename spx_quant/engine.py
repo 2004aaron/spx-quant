@@ -14,7 +14,7 @@ from . import analytics, clock, margin, sizing
 from .data import cboe
 from .params import MissingParam, Params
 from .profile import Profile
-from .regime import Regime, classify, gate
+from .regime import Regime, advisories, classify, gate, readings, stand_down_rules
 from .strategies import BUILDERS, Position, build
 
 
@@ -149,8 +149,9 @@ def run_scan(source, profile: Profile, params: Params, now: datetime | None = No
     ok, why = gate(res.regime, params)
     if not ok:
         res.outcome, res.kind, res.reasons = "stand_down", "stand_down", why
-        res.codes = _gate_codes(res.regime)
+        res.codes = _gate_codes(res.regime, params)
         return res
+    res.notes += advisories(res.regime, params)
 
     allowed = list(params.playbook.get(res.regime.bucket, []))
     if not allowed:
@@ -205,14 +206,8 @@ def run_scan(source, profile: Profile, params: Params, now: datetime | None = No
     return res
 
 
-def _gate_codes(r: Regime) -> list[str]:
+def _gate_codes(r: Regime, params: Params) -> list[str]:
     if not r.known:
         return ["regime_unknown"]
-    codes = []
-    if r.state == "backwardation":
-        codes.append("backwardation")
-    if r.bucket == "crushed":
-        codes.append("vol_floor")
-    if r.bucket == "panic":
-        codes.append("vol_ceiling")
-    return codes
+    active = stand_down_rules(params)
+    return [code for code in readings(r, params) if code in active]
