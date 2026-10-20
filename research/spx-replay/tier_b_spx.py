@@ -109,6 +109,7 @@ class Trade:
     call_k: float
     quotes: dict           # fill -> credit per share
     regime: str = "n/a"
+    fut: str = "n/a"
     closed: dict = field(default_factory=dict)   # variant -> (date, pnl $)
 
 
@@ -156,7 +157,7 @@ def settle(t: Trade, spot: float) -> float:
     return max(t.put_k - spot, 0) + max(spot - t.call_k, 0)
 
 
-def replay(path: Path, every: int, delta: float, dte: int, lo: int, hi: int, regime_of=None) -> list[Trade]:
+def replay(path: Path, every: int, delta: float, dte: int, lo: int, hi: int, regime_of=None, fut_of=None) -> list[Trade]:
     trades, open_, n, last_spot = [], [], 0, None
     for d, b in boards(path):
         for t in list(open_):
@@ -179,6 +180,7 @@ def replay(path: Path, every: int, delta: float, dte: int, lo: int, hi: int, reg
             t = open_trade(d, b, delta, dte, lo, hi)
             if t:
                 t.regime = regime_of(d) if regime_of else "n/a"
+                t.fut = fut_of(d) if fut_of else "n/a"
                 trades.append(t)
                 open_.append(t)
         n += 1
@@ -230,6 +232,22 @@ def regime_lookup(cache: Path, params):
     return lookup
 
 
+def futures_lookup(path: Path, params):
+    """State of the VIX futures curve (research/spx-replay/vix_curve.py output) the session before d."""
+    rows = list(csv.DictReader(path.open()))
+    days = [date.fromisoformat(r["date"]) for r in rows]
+    slope = [float(r["slope30"]) for r in rows]
+    up, down = params.regime["contango_slope"], params.regime["backwardation_slope"]
+
+    def lookup(d: date) -> str:
+        i = bisect_left(days, d)
+        if i == 0:
+            return "unknown"
+        x = slope[i - 1]
+        return "backwardation" if x <= down else "contango" if x >= up else "flat"
+    return lookup
+
+
 def report(trades: list[Trade], delta: float, dte: int, underlying: str = "SPX") -> tuple[str, dict]:
     res = {f"{f}/{e}": summary(trades, (f, e)) for f, e in VARIANTS}
     fills = {"bidask": "bid/ask", "mid": "mid"}
@@ -241,7 +259,9 @@ def report(trades: list[Trade], delta: float, dte: int, underlying: str = "SPX")
     if base["n"]:
         lines += ["", f"Concentration (hold, bid/ask): worst 5% of trades ${base['worst5_sum']:,.0f} "
                       f"against total gains ${base['gains_sum']:,.0f}."]
-    for label, key in (("year", lambda t: str(t.opened.year)), ("regime the day before entry", lambda t: t.regime)):
+    splits = (("year", lambda t: str(t.opened.year)), ("regime the day before entry", lambda t: t.regime),
+              ("futures curve the day before entry", lambda t: t.fut))
+    for label, key in splits:
         groups = defaultdict(list)
         for t in trades:
             groups[key(t)].append(t)
@@ -262,10 +282,12 @@ def main() -> None:
     ap.add_argument("--dte", type=int, default=p.expiry["target_dte"])
     ap.add_argument("--cboe-cache", type=Path, default=ROOT / ".cache" / "cboe")
     ap.add_argument("--json", type=Path)
+    ap.add_argument("--vix-curve", type=Path, help="CSV from vix_curve.py; adds a split by VIX futures curve")
     ap.add_argument("--underlying", default="SPX", help="label only; OptionsDX SPY files load the same way")
     a = ap.parse_args()
     lookup = regime_lookup(a.cboe_cache, p) if (a.cboe_cache / "VIX3M.csv").exists() else None
-    trades = replay(a.data, a.every, a.delta, a.dte, p.expiry["dte_min"], p.expiry["dte_max"], lookup)
+    fut = futures_lookup(a.vix_curve, p) if a.vix_curve else None
+    trades = replay(a.data, a.every, a.delta, a.dte, p.expiry["dte_min"], p.expiry["dte_max"], lookup, fut)
     text, res = report(trades, a.delta, a.dte, a.underlying)
     print(text)
     if a.json:

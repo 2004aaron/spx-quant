@@ -127,3 +127,35 @@ class SpxReplay(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+vspec = importlib.util.spec_from_file_location("vix_curve", ROOT / "research" / "spx-replay" / "vix_curve.py")
+vc = importlib.util.module_from_spec(vspec)
+sys.modules["vix_curve"] = vc
+vspec.loader.exec_module(vc)
+
+
+class VixCurve(unittest.TestCase):
+    def test_parity_forward(self):
+        legs = lambda c, p: {"C": (c - 0.1, c + 0.1, 0.5), "P": (p - 0.1, p + 0.1, -0.5)}
+        self.assertAlmostEqual(vc.forward({18.0: legs(2.4, 0.6), 20.0: legs(1.2, 1.4), 22.0: legs(0.5, 2.7)}), 19.8)
+
+    def test_curve_row_interpolates_30_days(self):
+        b = tb.Board(16.0)
+        d = date(2023, 6, 1)
+        for days, f in ((20, 17.0), (48, 19.0)):
+            k = round(f)
+            b.chains[d + timedelta(days=days)][float(k)] = {"C": (f - k + 0.9, f - k + 1.1, 0.5), "P": (0.9, 1.1, -0.5)}
+        row = vc.curve_row(d, b)
+        self.assertAlmostEqual(row["f30"], 17.0 + 2.0 * 10 / 28, places=2)
+        self.assertGreater(row["slope30"], 0.05)
+
+    def test_futures_lookup_uses_prior_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "c.csv"
+            f.write_text("date,slope30\n2020-03-13,-0.2\n2020-03-16,0.12\n2020-03-17,0.02\n")
+            look = tb.futures_lookup(f, tb.load_params())
+            self.assertEqual(look(date(2020, 3, 13)), "unknown")
+            self.assertEqual(look(date(2020, 3, 16)), "backwardation")
+            self.assertEqual(look(date(2020, 3, 17)), "contango")
+            self.assertEqual(look(date(2020, 3, 18)), "flat")
