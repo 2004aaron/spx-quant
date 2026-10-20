@@ -21,14 +21,14 @@ normal_below = 20.0
 elevated_below = 28.0    # volatility ceiling (US-04-AC1)
 
 [playbook]
-low = ["strangle", "naked_put", "iron_condor", "put_vertical"]
-normal = ["strangle", "naked_put", "iron_condor", "put_vertical"]
-elevated = ["strangle", "naked_put", "iron_condor", "put_vertical"]
+low = ["strangle", "naked_put", "put_vertical"]
+normal = ["strangle", "naked_put", "put_vertical"]
+elevated = ["strangle", "naked_put", "put_vertical"]
 
 [expiry]
-target_dte = 45
-dte_min = 30
-dte_max = 60
+target_dte = 60
+dte_min = 45
+dte_max = 75
 
 [strangle]
 target_delta = 0.16
@@ -37,8 +37,8 @@ target_delta = 0.16
 target_delta = 0.16
 
 [put_vertical]
-short_delta = 0.25
-width_pct = 0.0075
+short_delta = 0.16
+width_pct = 0.05
 
 [iron_condor]
 short_delta = 0.16
@@ -49,6 +49,19 @@ min_open_interest = 50
 min_volume = 25
 max_spread_pct = 0.25
 min_mid = 0.30
+max_fill_cost_pct = 0.25   # reject a structure whose natural fill gives up more than this share of the mid credit
+
+[trend]
+# 50-day vs 200-day SMA of the SPX close. Strategies in up_only are offered only when the 50-day
+# is above the 200-day; missing or stale history counts as not up.
+fast_sma = 50
+slow_sma = 200
+max_age_days = 5
+up_only = ["naked_put", "put_vertical"]
+prefer_up = ["naked_put"]
+# 1:N delta:theta limits for the bullish structures in an uptrend (used when looser than the profile's)
+naked_put_delta_theta = 0.5
+put_vertical_delta_theta = 0.25
 
 [margin]
 regt_index_pct = 0.15
@@ -88,22 +101,30 @@ eod_slot = "13:25"
 "vol_buckets.low_below" = { tag = "unvalidated", source = "mentor framework" }
 "vol_buckets.normal_below" = { tag = "unvalidated", source = "mentor framework" }
 "vol_buckets.elevated_below" = { tag = "unvalidated", source = "mentor framework; proposal US-04 ceiling 28" }
-"playbook.low" = { tag = "unvalidated", source = "proposal US-04: only VIX below the 13 floor stands down; per-bucket restrictions pending mentor" }
-"playbook.normal" = { tag = "unvalidated", source = "proposal US-04: every built strategy allowed between floor and ceiling; pending mentor" }
-"playbook.elevated" = { tag = "unvalidated", source = "proposal US-04: every built strategy allowed between floor and ceiling; pending mentor" }
-"expiry.target_dte" = { tag = "validated", source = "backtest-findings Tier B part A: 45 DTE 32.0% return on credit vs 28.9% (30) and 27.0% (60)" }
-"expiry.dte_min" = { tag = "unvalidated", source = "mentor framework, 30-60 DTE window" }
-"expiry.dte_max" = { tag = "unvalidated", source = "mentor framework, 30-60 DTE window" }
+"playbook.low" = { tag = "unvalidated: partially supported", source = "docs/results/all-strategies-spx-2010-2023.md: iron condor dropped (2.9% return on credit at mid fills, negative held to expiry; Tier A CNDR worst program); per-bucket restrictions pending mentor" }
+"playbook.normal" = { tag = "unvalidated: partially supported", source = "docs/results/all-strategies-spx-2010-2023.md: iron condor dropped; see playbook.low" }
+"playbook.elevated" = { tag = "unvalidated: partially supported", source = "docs/results/all-strategies-spx-2010-2023.md: iron condor dropped; see playbook.low" }
+"expiry.target_dte" = { tag = "validated", source = "docs/results/rules-v2.md: SPX 2010-2023, 60 DTE beat 45 for strangle and naked put in both halves (strangle 46.5% vs 30.1%, naked put 85.8% vs 63.6% annual on PM buying power); replaces the SPY 2019-2026 45-DTE result" }
+"expiry.dte_min" = { tag = "unvalidated", source = "target_dte minus 15, same window width as the mentor 30-60 framework" }
+"expiry.dte_max" = { tag = "unvalidated", source = "target_dte plus 15, same window width as the mentor 30-60 framework" }
 "strangle.target_delta" = { tag = "unvalidated: partially supported", source = "backtest-findings Tier B part A: 10-delta better risk-adjusted on SPY 2019-2026" }
 "naked_put.target_delta" = { tag = "unvalidated", source = "same 16-delta default as the strangle" }
-"put_vertical.short_delta" = { tag = "unvalidated", source = "operational default" }
-"put_vertical.width_pct" = { tag = "unvalidated", source = "operational default: about 50 SPX points at 6,600" }
+"put_vertical.short_delta" = { tag = "unvalidated: partially supported", source = "docs/results/rules-v2.md vertical sweep: 16-delta short beat 25-delta at every width (5% wide: 23.3% vs 11.3% return on credit, bid/ask fills)" }
+"put_vertical.width_pct" = { tag = "unvalidated: partially supported", source = "docs/results/rules-v2.md vertical sweep: 0.75% wings lost 112% of credit at bid/ask; 5% wings made 23.3% (22.1% 2010-2018, 24.1% 2019-2023), 30.1%/yr on buying power" }
 "iron_condor.short_delta" = { tag = "unvalidated", source = "same 16-delta default as the strangle" }
 "iron_condor.width_pct" = { tag = "unvalidated", source = "operational default" }
 "liquidity.min_open_interest" = { tag = "unvalidated", source = "engine-build-notes: prefilter before delta selection" }
 "liquidity.min_volume" = { tag = "unvalidated", source = "engine-build-notes: accept OI or volume, delayed feed carries prior-session OI" }
 "liquidity.max_spread_pct" = { tag = "unvalidated", source = "engine-build-notes" }
 "liquidity.min_mid" = { tag = "unvalidated", source = "engine-build-notes" }
+"liquidity.max_fill_cost_pct" = { tag = "unvalidated: partially supported", source = "docs/results/rules-v2.md vertical sweep: skipping verticals whose natural fill gives up more than 25% of mid credit raised 5%-wide return on credit from 23.3% to 26.4%; 0.75% wings gave up a median 39%" }
+"trend.fast_sma" = { tag = "unvalidated: partially supported", source = "docs/results/rules-v2.md: naked put beat strangle with 50-day above 200-day in both halves of 2010-2023; Cboe PUT/PUTD lost 7-8%/yr in 2007-2009 with 50-day below 200-day" }
+"trend.slow_sma" = { tag = "unvalidated: partially supported", source = "same as trend.fast_sma" }
+"trend.max_age_days" = { tag = "unvalidated", source = "operational default: a long weekend plus one missed day" }
+"trend.up_only" = { tag = "unvalidated: partially supported", source = "docs/results/rules-v2.md: same evidence as trend.fast_sma; below-200-day dips alone were the naked put's best entries, so only the 50/200 cross gates it; put vertical added as the same long-delta bet, not separately tested by trend" }
+"trend.prefer_up" = { tag = "unvalidated: partially supported", source = "docs/results/all-strategies-spx-2010-2023.md: naked put 63.6% vs strangle 30.1% annual on PM buying power, both halves, 12 of 14 years; 2010-2023 was a bull market" }
+"trend.naked_put_delta_theta" = { tag = "unvalidated", source = "loosened from the 1:2 mentor limit so a 16-delta naked put (about 1:0.6 at 60 DTE) can pass in an uptrend; pending mentor sign-off" }
+"trend.put_vertical_delta_theta" = { tag = "unvalidated", source = "loosened from the 1:2 mentor limit so a 16-delta, 5%-wide put vertical (about 1:0.28) can pass in an uptrend; the defined-risk fallback for accounts too small for a naked put; pending mentor sign-off" }
 "margin.regt_index_pct" = { tag = "unvalidated", source = "Cboe Margin Manual, broad-based index short options: 15% of index value less OTM amount" }
 "margin.regt_min_pct" = { tag = "unvalidated", source = "Cboe Margin Manual: minimum 10% of index value (calls) or strike (puts)" }
 "margin.pm_down" = { tag = "unvalidated", source = "tastytrade, What is Portfolio Margin: minimum -15% stress for equity-based indices (regulatory floor is -8%)" }

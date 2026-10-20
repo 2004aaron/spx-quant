@@ -1,7 +1,7 @@
 import copy
 import gzip
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from spx_quant import clock, store
@@ -73,3 +73,19 @@ def params_without(section, key):
     p = copy.deepcopy(PARAMS)
     del p.sections[section][key]
     return p
+
+
+def params_with(section, **values):
+    p = copy.deepcopy(PARAMS)
+    p.sections[section].update(values)
+    return p
+
+
+class TrendReplay(ReplaySource):
+    """The recorded session plus a synthetic SPX daily history ending the session before (drift > 0 is an uptrend)."""
+
+    def __init__(self, drift=0.001, now=EOD):
+        super().__init__(REPLAY, now)
+        from spx_quant.synthetic import history
+        text = history(clock.market_date(now) - timedelta(days=3), drift=drift)
+        self.history_text = lambda: text

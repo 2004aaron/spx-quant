@@ -49,6 +49,8 @@ def _market_lines(res: ScanResult) -> list[str]:
         r = res.regime
         slope = f" (slope {r.slope:+.3f})" if r.slope is not None else ""
         out.append(f"  Regime: {r.state} / {r.bucket}{slope}" if r.known else f"  Regime: unknown ({r.reason})")
+    if res.trend is not None:
+        out.append(f"  Trend: {res.trend}")
     return out
 
 
@@ -86,7 +88,9 @@ def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
             f"  Buying power: ${s.bp_total:,.2f} of ${s.cap:,.2f} cap ({s.contracts} x ${s.bp_per_lot:,.2f}, "
             f"{prof.margin_type.replace('_', '-')} margin)",
             f"  Delta:theta: {s.dt_text()} within the 1:{s.dt_limit:g} limit (delta {s.delta_per_lot:+.2f} SPY deltas, "
-            f"theta ${s.theta_per_lot:,.2f}/day per lot)",
+            f"theta ${s.theta_per_lot:,.2f}/day per lot)"
+            + (f"; profile limit 1:{prof.delta_theta_limit:g} relaxed for a {p.label()} in an uptrend"
+               if s.dt_limit != prof.delta_theta_limit else ""),
             f"  Worst-case limit: ${s.worst_total:,.2f} of ${s.worst_limit:,.2f} ({prof.max_worst_case_pct:.0%} of net liq; "
             f"{s.contracts} x ${s.worst_per_lot:,.2f} stress loss per lot)",
         ]
@@ -117,8 +121,12 @@ def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
         lines += textwrap.wrap(assumptions_text(r.assumptions), 96, initial_indent="  ", subsequent_indent="  ")
         lines += ["", "RANKING (expected annual return on buying power; best first)"]
         lines += [_candidate_summary(i, x) for i, x in enumerate(res.ranked, 1)]
-        why = f"  Ranked first because it has the highest expected annual return on buying power ({r.ann_return_bp:.1f}%)"
-        lines.append(why + ("." if len(res.ranked) == 1 else f" of {len(res.ranked)} candidates that fit."))
+        if p.strategy in res.preferred and len(res.ranked) > 1:
+            lines.append(f"  Ranked first because the trend is up and the {p.label()} is preferred in uptrends "
+                         f"({r.ann_return_bp:.1f}% expected annual return on buying power).")
+        else:
+            why = f"  Ranked first because it has the highest expected annual return on buying power ({r.ann_return_bp:.1f}%)"
+            lines.append(why + ("." if len(res.ranked) == 1 else f" of {len(res.ranked)} candidates that fit."))
     elif res.kind == "stand_down":
         subject = f"[StormGlass {aid}] STAND DOWN: {res.reasons[0] if res.reasons else 'no trade'}"
         lines += ["", "DO NOT ENTER"] + [f"  - {x}" for x in res.reasons]

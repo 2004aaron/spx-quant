@@ -67,6 +67,10 @@ class LiveSource:
     def quote_payload(self, symbol: str) -> dict:
         return fetch_json(f"{CDN}/quotes/_{symbol}.json", self.timeout)
 
+    def history_text(self) -> str:
+        from ..trend import fetch_text
+        return fetch_text(timeout=self.timeout)
+
     def now(self) -> datetime:
         return clock.now_utc()
 

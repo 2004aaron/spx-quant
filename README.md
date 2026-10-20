@@ -46,6 +46,12 @@ Bands come from the grading table in the final proposal. A-KR1 is missing Octobe
 before the cloud schedule started. October 16 counts on the end-of-day scan from the second log;
 [`docs/results/a-kr1.md`](docs/results/a-kr1.md) says how the two logs were combined.
 
+### Rules v2 (October 20, pending mentor sign-off)
+
+The SPX backtests on OptionsDX data (2010 to 2023) changed what the engine builds: 60 DTE instead of 45,
+no iron condor, naked puts and wide put verticals only when the SPX 50-day is above the 200-day, and a
+fill-cost guard on thin structures. Evidence and the end-to-end comparison: [`docs/results/rules-v2.md`](docs/results/rules-v2.md).
+
 Beta (November 16) and RC (December 9) stories ship in later releases, on the schedule
 in the proposal.
 
@@ -56,7 +62,7 @@ Python 3.11 or newer. No third-party packages, no install step.
 ```bash
 git clone https://github.com/2004aaron/spx-quant.git
 cd spx-quant
-python -m unittest discover -s tests -t . -v        # 138 tests, about 10 seconds
+python -m unittest discover -s tests -t . -v        # 157 tests, about 15 seconds
 
 python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 --max-worst-case 0.05
 python -m spx_quant profile show
