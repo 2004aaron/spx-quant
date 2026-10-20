@@ -46,7 +46,7 @@ Bands come from the grading table in the final proposal. A-KR1 is missing Octobe
 before the cloud schedule started. October 16 counts on the end-of-day scan from the second log;
 [`docs/results/a-kr1.md`](docs/results/a-kr1.md) says how the two logs were combined.
 
-### Rules v2 (October 20, pending mentor sign-off)
+### Rules v2 (October 20, signed off by Jonathan)
 
 The SPX backtests on OptionsDX data (2010 to 2023) changed what the engine builds: 60 DTE instead of 45,
 no iron condor, naked puts and wide put verticals only when the SPX 50-day is above the 200-day, and a

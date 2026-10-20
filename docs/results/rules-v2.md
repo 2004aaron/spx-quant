@@ -1,6 +1,6 @@
 # Rules v2: what the SPX backtests changed (2026-10-20)
 
-The rules pivot on October 19 changed the gate and the exits. This round changes what the engine builds. It rests on three studies run on OptionsDX SPX end-of-day chains, 2010 to 2023:
+The rules pivot on October 19 changed the gate and the exits. Jonathan signed off on this round on October 20. This round changes what the engine builds. It rests on three studies run on OptionsDX SPX end-of-day chains, 2010 to 2023:
 
 - [`tier-b-spx-2010-2023.md`](tier-b-spx-2010-2023.md): strangle replay and the VIX futures curve.
 - [`all-strategies-spx-2010-2023.md`](all-strategies-spx-2010-2023.md): all four builders, with the production strike selection and margin model.
@@ -86,7 +86,7 @@ Max drawdown here is on a book that opens a lot every 3 sessions, so 15 to 20 po
 
 - **COVID still happens.** The worst naked put trades opened in February 2020 with the trend up. The trend rule doesn't stop a crash; the 5% worst-case sizing cap does.
 - **Bull-market sample.** 2010 to 2023 rewarded long delta. The 2007-2009 index check is the only bear-market evidence, and it's index-level, not trade-level.
-- **The delta:theta limit was a mentor rule.** Loosening it for the naked put is a deliberate decision to take directional risk in uptrends. It needs Jonathan's sign-off before it ships.
+- **The delta:theta limit was a mentor rule.** Loosening it for the naked put is a deliberate decision to take directional risk in uptrends. Jonathan signed off on October 20, 2026.
 
 ## Evidence 5: put verticals need wide wings
 
