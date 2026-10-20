@@ -5,8 +5,9 @@
 Strikes are chosen by the production code (spx_quant.strategies.build) on each session's real
 chain, so every trade is the one the engine would have proposed that day. Buying power comes from
 spx_quant.margin (portfolio margin and Reg-T). Each trade is marked every session from real
-quotes and exits either at the 50% profit target (read on the mid, filled at bid/ask) or at
-expiration, settled at that day's close.
+quotes and exits either at the 50% profit target (read on the mid) or at expiration, settled at
+that day's close. Two fill modes bracket execution: bid/ask (sell the bid, buy the ask, on every
+leg) and mid.
 
 OptionsDX has no open interest, so the open-interest/volume part of the liquidity filter is
 skipped; the spread and minimum-mid checks still apply. Every expiry is treated as close-settled.
@@ -93,14 +94,14 @@ def replay(path: Path, every: int, dtes: list[int]):
             if d >= pos.exp:
                 s = spot if d == pos.exp else last_spot
                 pnl = pos.payoff(s) - pos.credit + t["credit"]
-                t["out"].setdefault("pt50", (pos.exp, pnl))
-                t["out"]["hold"] = (pos.exp, pnl)
+                t["out"].setdefault("pt50", (pos.exp, pnl, pos.payoff(s)))
+                t["out"]["hold"] = (pos.exp, pnl, pos.payoff(s))
                 open_.remove(t)
                 continue
             if "pt50" not in t["out"]:
                 c = close_cost(pos, quotes)
                 if c and c[0] <= t["credit_mid"] / MULTIPLIER * (1 - TARGET):
-                    t["out"]["pt50"] = (d, t["credit"] - c[1] * MULTIPLIER)
+                    t["out"]["pt50"] = (d, t["credit"] - c[1] * MULTIPLIER, t["credit_mid"] - c[0] * MULTIPLIER)
         if n % every == 0:
             now = clock.local_to_utc("ET", datetime(d.year, d.month, d.day, 16, 0))
             for dte, p in plist.items():
@@ -118,13 +119,13 @@ def replay(path: Path, every: int, dtes: list[int]):
     return [t for t in trades if len(t["out"]) == 2]
 
 
-def summary(ts: list[dict], exit_: str) -> dict:
-    pnl = [t["out"][exit_][1] for t in ts]
+def summary(ts: list[dict], exit_: str, fill: str = "natural") -> dict:
+    pnl = [t["out"][exit_][1 if fill == "natural" else 2] for t in ts]
     days = [max((t["out"][exit_][0] - t["opened"]).days, 1) for t in ts]
     s = sorted(pnl)
     bp_days = lambda key: sum(t[key] * dd for t, dd in zip(ts, days)) / 365
     return {"n": len(ts), "win": sum(x > 0 for x in pnl) / len(ts), "avg": st.mean(pnl),
-            "roc": sum(pnl) / sum(t["credit"] for t in ts), "worst": s[0], "p5": s[int(0.05 * (len(s) - 1))],
+            "roc": sum(pnl) / sum(t["credit" if fill == "natural" else "credit_mid"] for t in ts), "worst": s[0], "p5": s[int(0.05 * (len(s) - 1))],
             "days": st.mean(days), "bp_pm": st.mean(t["bp_pm"] for t in ts), "bp_regt": st.mean(t["bp_regt"] for t in ts),
             "ann_pm": sum(pnl) / bp_days("bp_pm"), "ann_regt": sum(pnl) / bp_days("bp_regt")}
 
@@ -145,16 +146,19 @@ def report(trades: list[dict]) -> tuple[str, dict]:
         groups[(t["dte"], t["strategy"])].append(t)
     for dte in sorted({k[0] for k in groups}):
         for exit_ in ("pt50", "hold"):
-            rows = [(s.replace("_", " "), summary(groups[(dte, s)], exit_)) for s in BUILDERS if groups[(dte, s)]]
-            res[f"{dte}/{exit_}"] = dict(rows)
-            lines += [f"### Target {dte} DTE, {'50% profit target' if exit_ == 'pt50' else 'hold to expiry'}, bid/ask fills", "",
-                      table(rows), ""]
+            for fill in ("natural", "mid"):
+                rows = [(s.replace("_", " "), summary(groups[(dte, s)], exit_, fill)) for s in BUILDERS if groups[(dte, s)]]
+                res[f"{dte}/{exit_}/{fill}"] = dict(rows)
+                lines += [f"### Target {dte} DTE, {'50% profit target' if exit_ == 'pt50' else 'hold to expiry'}, "
+                          f"{'bid/ask' if fill == 'natural' else 'mid'} fills", "", table(rows), ""]
         rows = []
         for half, f in (("2010-2018", lambda t: t["opened"].year < 2019), ("2019-2023", lambda t: t["opened"].year >= 2019)):
             for s in BUILDERS:
                 sub = [t for t in groups[(dte, s)] if f(t)]
                 if sub:
-                    rows.append((f"{s.replace('_', ' ')}, {half}", summary(sub, "pt50")))
+                    for fill in ("natural", "mid"):
+                        rows.append((f"{s.replace('_', ' ')}, {half}, {'bid/ask' if fill == 'natural' else 'mid'}",
+                                     summary(sub, "pt50", fill)))
         res[f"{dte}/halves"] = dict(rows)
         lines += [f"### Target {dte} DTE, 50% profit target, by half", "", table(rows), ""]
     return "\n".join(lines), res
@@ -177,11 +181,12 @@ def main() -> None:
         with a.trades.open("w", newline="") as f:
             w = csv.writer(f)
             w.writerow(["strategy", "target_dte", "opened", "exp", "legs", "credit", "bp_pm", "bp_regt",
-                        "pt50_closed", "pt50_pnl", "hold_pnl"])
+                        "pt50_closed", "pt50_pnl", "hold_pnl", "credit_mid", "pt50_pnl_mid", "hold_pnl_mid"])
             for t in trades:
                 w.writerow([t["strategy"], t["dte"], t["opened"], t["pos"].exp, t["pos"].legs_text(), round(t["credit"], 2),
                             t["bp_pm"], t["bp_regt"], t["out"]["pt50"][0], round(t["out"]["pt50"][1], 2),
-                            round(t["out"]["hold"][1], 2)])
+                            round(t["out"]["hold"][1], 2), t["credit_mid"], round(t["out"]["pt50"][2], 2),
+                            round(t["out"]["hold"][2], 2)])
 
 
 if __name__ == "__main__":
