@@ -159,3 +159,38 @@ class VixCurve(unittest.TestCase):
             self.assertEqual(look(date(2020, 3, 16)), "backwardation")
             self.assertEqual(look(date(2020, 3, 17)), "contango")
             self.assertEqual(look(date(2020, 3, 18)), "flat")
+
+
+aspec = importlib.util.spec_from_file_location("all_strategies", ROOT / "research" / "spx-replay" / "all_strategies.py")
+al = importlib.util.module_from_spec(aspec)
+sys.modules["all_strategies"] = al
+aspec.loader.exec_module(al)
+
+
+class AllStrategies(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.flat = Path(cls.tmp.name) / "flat"
+        write_months(cls.flat, {d: 2000.0 for d in sessions(date(2015, 1, 5), 90)})
+        cls.trades = al.replay(cls.flat, 3, [45])
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_builds_every_strategy_with_production_builder(self):
+        self.assertEqual({t["strategy"] for t in self.trades}, set(al.BUILDERS))
+        for t in self.trades:
+            self.assertTrue(30 <= (t["pos"].exp - t["opened"]).days <= 60)
+            self.assertGreater(t["bp_pm"], 0)
+
+    def test_defined_risk_bp_capped_by_width(self):
+        for t in self.trades:
+            if t["pos"].defined_risk:
+                self.assertLessEqual(t["bp_pm"], t["pos"].width * 100)
+
+    def test_flat_market_short_premium_wins(self):
+        s = al.summary([t for t in self.trades if t["strategy"] == "strangle"], "hold")
+        self.assertEqual(s["win"], 1.0)
+        self.assertGreater(s["ann_pm"], 0)
