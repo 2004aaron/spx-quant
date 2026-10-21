@@ -1,4 +1,4 @@
-"""Candidate structure builders (US-03): strangle, naked put, put vertical, iron condor.
+"""Candidate structure builders (US-03): strangle, naked put, put vertical.
 
 Lessons from the prototype, kept here on purpose:
   * Filter the chain for liquidity BEFORE selecting by delta. On a dense board the
@@ -22,8 +22,8 @@ MULTIPLIER = 100
 # XSP share-delta is 1. The mentor's 1:2 delta:theta limit is read in these units (decided 2026-10-06).
 SPY_WEIGHT = {"_SPX": 10.0, "_XSP": 1.0}
 AM_SETTLED_ROOTS = {"SPX"}  # SPX standard monthlies settle on the open; SPXW and XSP settle on the close
-BUILDERS = ("strangle", "naked_put", "put_vertical", "iron_condor")
-DEFINED_RISK = {"put_vertical", "iron_condor"}
+BUILDERS = ("strangle", "naked_put", "put_vertical")
+DEFINED_RISK = {"put_vertical"}
 
 
 @dataclass(frozen=True)
@@ -61,7 +61,7 @@ class Position:
     exp: date
     dte: int
     legs: list[Leg]
-    width: float = 0.0  # strike distance of the widest spread, defined-risk structures only
+    width: float = 0.0  # put vertical: short strike minus long strike
 
     @property
     def credit(self) -> float:
@@ -149,13 +149,10 @@ def _nearest_delta(rows: list[dict], target: float) -> dict | None:
     return min(rows, key=lambda r: (abs(abs(r["delta"]) - target), r["strike"])) if rows else None
 
 
-def _wing(rows: list[dict], short: dict, width: float) -> dict | None:
-    if short["right"] == "P":
-        pool = [r for r in rows if r["strike"] < short["strike"]]
-        target = short["strike"] - width
-    else:
-        pool = [r for r in rows if r["strike"] > short["strike"]]
-        target = short["strike"] + width
+def _wing(puts: list[dict], short: dict, width: float) -> dict | None:
+    """The long put nearest `width` points below the short strike."""
+    pool = [r for r in puts if r["strike"] < short["strike"]]
+    target = short["strike"] - width
     return min(pool, key=lambda r: (abs(r["strike"] - target), r["strike"])) if pool else None
 
 
@@ -187,20 +184,5 @@ def _legs(strategy: str, spot: float, puts: list[dict], calls: list[dict], p: Pa
         if not (short and long):
             return None, 0.0
         return [Leg(short, -1), Leg(long, 1)], short["strike"] - long["strike"]
-    if strategy == "iron_condor":
-        c = p.iron_condor
-        sp = _nearest_delta(puts, c["short_delta"])
-        sc = _nearest_delta(calls, abs(sp["delta"])) if sp else None
-        if not (sp and sc):
-            return None, 0.0
-        lp, lc = _wing(puts, sp, c["width_pct"] * spot), _wing(calls, sc, c["width_pct"] * spot)
-        if not (lp and lc):
-            return None, 0.0
-        width = max(sp["strike"] - lp["strike"], lc["strike"] - sc["strike"])
-        return [Leg(sp, -1), Leg(lp, 1), Leg(sc, -1), Leg(lc, 1)], width
     raise ValueError(f"unknown strategy {strategy!r}; expected one of {BUILDERS}")
 
-
-def pick_strangle(rows: list[dict], today: date, params: Params | None = None,
-                  ticker: str = "_SPX", spot: float = 0.0) -> Position | None:
-    return build("strangle", ticker, spot, rows, today, params)

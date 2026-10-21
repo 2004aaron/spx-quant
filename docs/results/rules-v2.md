@@ -6,7 +6,7 @@ The rules pivot on October 19 changed the gate and the exits. Jonathan signed of
 - [`all-strategies-spx-2010-2023.md`](all-strategies-spx-2010-2023.md): all four builders, with the production strike selection and margin model.
 - The trend and end-to-end tests below.
 
-Every rule is still in `config/params.toml` and can be switched back.
+Only this rule set is in the code; the earlier builders and the iron condor live in the git history.
 
 ## The changes
 
@@ -109,6 +109,8 @@ At the old setting (25-delta short, wings 0.75% of spot, about 15 SPX points in 
 At 5% wings the vertical's delta:theta is about 1:0.28, still outside the mentor's 1:2. It's the same long-delta bet as the naked put, so it gets the same treatment: only in an uptrend, with a 1:0.25 limit. I haven't tested the vertical against the trend separately.
 
 ## Reproduce
+
+The scripts and raw data are on the [`research` branch](https://github.com/2004aaron/spx-quant/tree/research).
 
 ```
 python research/spx-replay/all_strategies.py data/optionsdx/spx --dte 45 60 --trades trades.csv

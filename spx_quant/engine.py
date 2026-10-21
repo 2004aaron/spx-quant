@@ -13,7 +13,7 @@ from . import analytics, clock, margin, sizing, trend
 from .data import cboe
 from .params import MissingParam, Params
 from .profile import Profile
-from .regime import Regime, advisories, classify, gate, readings, stand_down_rules
+from .regime import STAND_DOWN, Regime, advisories, classify, gate, readings
 from .strategies import BUILDERS, Position, build
 
 
@@ -94,7 +94,7 @@ def evaluate(chain: cboe.Chain, profile: Profile, strategies: list[str], now: da
              tr: trend.Trend | None = None) -> list[Candidate]:
     today = clock.market_date(now)
     rate = params.need("risk", "rate")
-    max_fill = params.liquidity.get("max_fill_cost_pct")
+    max_fill = params.liquidity["max_fill_cost_pct"]
     out = []
     for name in strategies:
         pos = build(name, chain.ticker, chain.spot, chain.rows, today, params)
@@ -106,7 +106,7 @@ def evaluate(chain: cboe.Chain, profile: Profile, strategies: list[str], now: da
         dt = trend.delta_theta_override(name, tr, params, profile.delta_theta_limit) if tr else None
         sz = sizing.size(profile, bp, pos.net_delta, theta, worst, dt_limit=dt)
         cand = Candidate(pos, sz, reasons=list(sz.reasons), codes=list(sz.codes))
-        if max_fill is not None and fill_cost(pos) > max_fill:
+        if fill_cost(pos) > max_fill:
             cand.reasons.append(f"filling at the natural gives up {fill_cost(pos):.0%} of the ${pos.credit:,.2f} mid credit "
                                 f"(limit {max_fill:.0%}); too thin to survive the bid/ask")
             cand.codes.append("wide_fill")
@@ -215,5 +215,4 @@ def run_scan(source, profile: Profile, params: Params, now: datetime | None = No
 def _gate_codes(r: Regime, params: Params) -> list[str]:
     if not r.known:
         return ["regime_unknown"]
-    active = stand_down_rules(params)
-    return [code for code in readings(r, params) if code in active]
+    return [code for code in readings(r, params) if code in STAND_DOWN]

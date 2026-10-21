@@ -8,12 +8,6 @@
 contango_slope = 0.05
 backwardation_slope = -0.01
 
-[gate]
-# Which regime readings stop a scan with STAND DOWN. Anything not listed is shown as
-# information on the alert but does not block a proposal (rule options: backwardation,
-# vol_floor, vol_ceiling).
-stand_down_on = ["vol_floor", "vol_ceiling"]
-
 [vol_buckets]
 crushed_below = 13.0     # volatility floor (US-04-AC2)
 low_below = 16.0
@@ -39,10 +33,6 @@ target_delta = 0.16
 [put_vertical]
 short_delta = 0.16
 width_pct = 0.05
-
-[iron_condor]
-short_delta = 0.16
-width_pct = 0.0075
 
 [liquidity]
 min_open_interest = 50
@@ -95,8 +85,7 @@ eod_slot = "13:25"
 
 [provenance]
 "regime.contango_slope" = { tag = "unvalidated", source = "mentor framework, Aug 2026 call" }
-"regime.backwardation_slope" = { tag = "unvalidated", source = "classification threshold only; backwardation no longer stands down (see gate.stand_down_on)" }
-"gate.stand_down_on" = { tag = "unvalidated: partially supported", source = "docs/results/rules-pivot.md (2026-10-19 re-run, Cboe data through 2026-10-16): backwardation removed, PUTD +26.4 pp/yr in backwardation vs rest, p=0.0015; floor kept (lowest-return bucket); ceiling kept as a risk rail, not supported on returns" }
+"regime.backwardation_slope" = { tag = "unvalidated", source = "classification threshold only; backwardation is a note, not a stand-down (docs/results/rules-pivot.md)" }
 "vol_buckets.crushed_below" = { tag = "unvalidated: partially supported", source = "backtest-findings Tier A table 4: right sign, not significant" }
 "vol_buckets.low_below" = { tag = "unvalidated", source = "mentor framework" }
 "vol_buckets.normal_below" = { tag = "unvalidated", source = "mentor framework" }
@@ -111,8 +100,6 @@ eod_slot = "13:25"
 "naked_put.target_delta" = { tag = "unvalidated", source = "same 16-delta default as the strangle" }
 "put_vertical.short_delta" = { tag = "unvalidated: partially supported", source = "docs/results/rules-v2.md vertical sweep: 16-delta short beat 25-delta at every width (5% wide: 23.3% vs 11.3% return on credit, bid/ask fills)" }
 "put_vertical.width_pct" = { tag = "unvalidated: partially supported", source = "docs/results/rules-v2.md vertical sweep: 0.75% wings lost 112% of credit at bid/ask; 5% wings made 23.3% (22.1% 2010-2018, 24.1% 2019-2023), 30.1%/yr on buying power" }
-"iron_condor.short_delta" = { tag = "unvalidated", source = "same 16-delta default as the strangle" }
-"iron_condor.width_pct" = { tag = "unvalidated", source = "operational default" }
 "liquidity.min_open_interest" = { tag = "unvalidated", source = "engine-build-notes: prefilter before delta selection" }
 "liquidity.min_volume" = { tag = "unvalidated", source = "engine-build-notes: accept OI or volume, delayed feed carries prior-session OI" }
 "liquidity.max_spread_pct" = { tag = "unvalidated", source = "engine-build-notes" }
