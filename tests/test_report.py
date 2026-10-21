@@ -98,12 +98,13 @@ class RcKrTest(unittest.TestCase):
             f = Path(d) / "marks.csv"
             f.write_text(f"alert_id,market_date,broker_pnl\n{self.aid},2026-09-28,-20\n")
             text, ok = kr.rc2(self.conn, PARAMS, date(2026, 9, 28), date(2026, 9, 28), str(f))
-        self.assertIn("mean error 2.8% over 1 comparisons", text)
+        self.assertIn("mean error 2.4% over 1 comparisons", text)
         self.assertTrue(ok)
         self.assertFalse(kr.rc2(self.conn, PARAMS, date(2026, 9, 28), date(2026, 9, 28), None)[1])
 
     def test_s1_flags_a_proposal_over_remaining_buying_power(self):
-        decisions.record(self.conn, self.aid, "modified", EOD + timedelta(minutes=2), contracts=24)
+        taken = int(150_000 // self.alert["bp_per_lot"])   # leaves less than one more lot of buying power
+        decisions.record(self.conn, self.aid, "modified", EOD + timedelta(minutes=2), contracts=taken)
         row = dict(store.get_alert(self.conn, self.aid))
         for k in ("id", "alert_id", "created_ts", "repeat_of"):
             row.pop(k)

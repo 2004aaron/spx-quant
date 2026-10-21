@@ -10,11 +10,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from . import analytics, clock, margin, sizing
+from . import analytics, clock, margin, sizing, trend
 from .data import cboe
 from .params import MissingParam, Params
 from .profile import Profile
-from .regime import Regime, advisories, classify, gate, readings, stand_down_rules
+from .regime import STAND_DOWN, Regime, advisories, classify, gate, readings
 from .strategies import BUILDERS, Position, build
 
 
@@ -50,6 +50,7 @@ class ScanResult:
     now: datetime
     kind: str | None = None           # proposal | stand_down | no_advice | None when the market is closed
     regime: Regime | None = None
+    trend: trend.Trend | None = None
     spot: float | None = None
     ticker: str | None = None          # the proposal's ticker once one is chosen
     market_ticker: str | None = None   # the board the regime read and spot came from
@@ -61,6 +62,7 @@ class ScanResult:
     ranked: list[Candidate] = field(default_factory=list)
     rejected: list[Candidate] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    preferred: list[str] = field(default_factory=list)   # strategies ranked ahead of the rest (uptrend preference)
     source: str = ""
     params_summary: str = ""
     profile: Profile | None = None
@@ -73,6 +75,8 @@ class ScanResult:
     def quotes(self) -> dict:
         q = {"spot": self.spot, "spot_ticker": self.market_ticker}
         q.update(self.curve)
+        if self.trend is not None:
+            q["trend"] = self.trend.as_dict()
         return q
 
 
@@ -81,10 +85,17 @@ def _no_advice(res: ScanResult, outcome: str, reasons: list[str], code: str) -> 
     return res
 
 
+def fill_cost(pos: Position) -> float:
+    """Share of the mid credit given up by filling every leg at the natural (sell bid, buy ask)."""
+    lo, _ = pos.credit_range
+    return (pos.credit - lo) / pos.credit if pos.credit > 0 else 1.0
+
+
 def evaluate(chain: cboe.Chain, profile: Profile, strategies: list[str], now: datetime, params: Params,
-             available: float | None = None) -> list[Candidate]:
+             tr: trend.Trend | None = None, available: float | None = None) -> list[Candidate]:
     today = clock.market_date(now)
     rate = params.need("risk", "rate")
+    max_fill = params.liquidity["max_fill_cost_pct"]
     out = []
     for name in strategies:
         pos = build(name, chain.ticker, chain.spot, chain.rows, today, params)
@@ -93,8 +104,13 @@ def evaluate(chain: cboe.Chain, profile: Profile, strategies: list[str], now: da
         bp = margin.bp_per_lot(pos, chain.spot, profile.margin_type, now, params)
         theta = pos.theta(chain.spot, now, rate)
         worst = analytics.stress_loss_per_lot(pos, chain.spot, now, params)
-        sz = sizing.size(profile, bp, pos.net_delta, theta, worst, available)
+        dt = trend.delta_theta_override(name, tr, params, profile.delta_theta_limit) if tr else None
+        sz = sizing.size(profile, bp, pos.net_delta, theta, worst, dt_limit=dt, available=available)
         cand = Candidate(pos, sz, reasons=list(sz.reasons), codes=list(sz.codes))
+        if fill_cost(pos) > max_fill:
+            cand.reasons.append(f"filling at the natural gives up {fill_cost(pos):.0%} of the ${pos.credit:,.2f} mid credit "
+                                f"(limit {max_fill:.0%}); too thin to survive the bid/ask")
+            cand.codes.append("wide_fill")
         if sz.ok:
             iv = analytics.atm_iv(chain.rows, pos.root, pos.exp, chain.spot)
             if iv is None:
@@ -154,6 +170,9 @@ def run_scan(source, profile: Profile, params: Params, now: datetime | None = No
     res.notes += advisories(res.regime, params)
 
     allowed = list(params.playbook.get(res.regime.bucket, []))
+    res.trend = trend.fetch(source, params, now)
+    allowed, dropped = trend.allowed(allowed, res.trend, params)
+    res.notes += trend.notes(res.trend, dropped, params)
     if not allowed:
         res.outcome, res.kind = "stand_down", "stand_down"
         res.reasons, res.codes = [f"no strategies are permitted in the {res.regime.bucket} bucket"], ["no_strategies"]
@@ -163,7 +182,7 @@ def run_scan(source, profile: Profile, params: Params, now: datetime | None = No
         return _no_advice(res, "error", [f"playbook names unknown strategies: {', '.join(unknown)}"], "config")
 
     try:
-        cands = evaluate(chain, profile, allowed, now, params, available)
+        cands = evaluate(chain, profile, allowed, now, params, res.trend, available)
         for t in tickers[1:]:
             if any(c.ok for c in cands):
                 break
@@ -172,11 +191,13 @@ def run_scan(source, profile: Profile, params: Params, now: datetime | None = No
                 res.notes.append(f"{t} unavailable: {'; '.join(p2.failures)}")
                 continue
             res.boards[extra.ticker] = {r["sym"]: r for r in extra.rows}
-            cands += evaluate(extra, profile, allowed, now, params, available)
+            cands += evaluate(extra, profile, allowed, now, params, res.trend, available)
     except MissingParam as e:
         return _no_advice(res, "error", [f"risk block cannot be computed: {e}"], "missing_param")
 
-    res.ranked = sorted((c for c in cands if c.ok), key=lambda c: -c.risk.ann_return_bp)
+    res.preferred = list(params.trend["prefer_up"]) if res.trend.up else []
+    res.ranked = sorted((c for c in cands if c.ok),
+                        key=lambda c: (c.position.strategy not in res.preferred, -c.risk.ann_return_bp))
     res.rejected = [c for c in cands if not c.ok]
     if res.ranked:
         best = res.best.position
@@ -190,12 +211,12 @@ def run_scan(source, profile: Profile, params: Params, now: datetime | None = No
     short = [c for c in cands if "over_available" in c.codes]
     if not cands:
         res.reasons, res.codes = ["no candidate could be built from liquid strikes in the DTE window"], ["no_candidates"]
-    elif short and all(set(c.codes) & {"over_available", "over_cap", "delta_theta", "theta", "bp_unknown", "over_worst_case"}
-                       for c in cands):
+    elif short and all(set(c.codes) & {"over_available", "over_cap", "delta_theta", "theta", "bp_unknown", "over_worst_case",
+                                       "wide_fill"} for c in cands):
         need = min(c.sized.bp_per_lot for c in short)
         res.reasons = [f"insufficient buying power: {sizing.usd(max(available, 0))} available, {sizing.usd(need)} needed"]
         res.codes = ["insufficient_bp"]
-    elif all(set(c.codes) & {"over_cap", "delta_theta", "theta", "bp_unknown", "over_worst_case"} for c in cands):
+    elif all(set(c.codes) & {"over_cap", "delta_theta", "theta", "bp_unknown", "over_worst_case", "wide_fill"} for c in cands):
         res.reasons = [f"no proposal could be sized for this account ({profile.margin_type}, "
                        f"${profile.bp_cap_dollars:,.0f} per-position cap, delta:theta 1:{profile.delta_theta_limit:g}, "
                        f"worst case at most ${profile.worst_case_limit:,.0f})"]
@@ -209,5 +230,4 @@ def run_scan(source, profile: Profile, params: Params, now: datetime | None = No
 def _gate_codes(r: Regime, params: Params) -> list[str]:
     if not r.known:
         return ["regime_unknown"]
-    active = stand_down_rules(params)
-    return [code for code in readings(r, params) if code in active]
+    return [code for code in readings(r, params) if code in STAND_DOWN]

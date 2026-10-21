@@ -27,8 +27,8 @@ has a test; the map is in [`docs/story-map.md`](docs/story-map.md).
 | --- | --- | --- |
 | US-01 account profile | size, margin type, BP cap, delta:theta limit, worst-case limit; account tiers; bad input keeps the old profile | `profile.py` |
 | US-02 regime | contango / flat / backwardation and a volatility bucket, with the VIX values and a timestamp; names a missing point | `regime.py` |
-| US-03 sized proposal | four builders (strangle, naked put, put vertical, iron condor) on SPX, falling back to XSP when SPX can't fit; Reg-T and portfolio margin; inclusive cap; contracts cut so the stress-test worst case stays within the profile's limit (default 5% of net liq); account tiers set the delta:theta default (1:2 under $1M, 1:7 above, in SPY-weighted deltas); ranked by expected annual return on buying power | `strategies.py`, `margin.py`, `sizing.py`, `engine.py` |
-| US-04 stand-down | floor 13 and ceiling 28 by default (`gate.stand_down_on`); backwardation shown as information since the [2026-10-19 rules pivot](docs/results/rules-pivot.md); reasons logged | `regime.py`, `engine.py` |
+| US-03 sized proposal | three builders (strangle, naked put, put vertical) about 60 days out, on SPX, falling back to XSP when SPX can't fit; Reg-T and portfolio margin; inclusive cap; contracts cut so the stress-test worst case stays within the profile's limit (default 5% of net liq); account tiers set the delta:theta default (1:2 under $1M, 1:7 above, in SPY-weighted deltas); naked put and put vertical only when the SPX 50-day is above the 200-day; a structure whose bid/ask fill gives up more than 25% of the credit is refused; ranked naked put first in an uptrend, then by expected annual return on buying power | `strategies.py`, `trend.py`, `margin.py`, `sizing.py`, `engine.py` |
+| US-04 stand-down | STAND DOWN only below the VIX 13 floor or at the 28 ceiling (`regime.STAND_DOWN`); backwardation shown as information since the [2026-10-19 rules pivot](docs/results/rules-pivot.md); reasons logged | `regime.py`, `engine.py` |
 | US-05 risk block | probability of profit, expected value, worst case (index -10%, volatility +10 points), CVaR 5% / 1%, breakevens, stress rows, implied crash rate, stated assumptions; refuses to default a missing assumption | `analytics.py` |
 | US-06 data check | one fetch per scan, checked for shape, size and quote age before use; NO ADVICE on stale or incomplete data | `data/cboe.py` |
 | Scan log | every scheduled scan and its result, with the quotes behind it, in append-only SQLite | `store.py`, `pipeline.py` |
@@ -46,6 +46,15 @@ Bands come from the grading table in the final proposal. A-KR1 is missing Octobe
 before the cloud schedule started. October 16 counts on the end-of-day scan from the second log;
 [`docs/results/a-kr1.md`](docs/results/a-kr1.md) says how the two logs were combined.
 
+### Rules v2 (October 20, signed off by Jonathan)
+
+The SPX backtests on OptionsDX data (2010 to 2023) changed what the engine builds: 60 DTE instead of 45,
+no iron condor, naked puts and wide put verticals only when the SPX 50-day is above the 200-day, and a
+fill-cost guard on thin structures. Evidence and the end-to-end comparison: [`docs/results/rules-v2.md`](docs/results/rules-v2.md).
+
+Only the current rule set is in the code. The retired rules are in the git history, and the backtest
+scripts and raw data that produced the evidence are on the [`research` branch](https://github.com/2004aaron/spx-quant/tree/research).
+
 ## Beta work on main (from October 19)
 
 With Alpha released, the Beta and RC stories are back on `main` for the Beta window
@@ -55,7 +64,7 @@ With Alpha released, the Beta and RC stories are back on `main` for the Beta win
 | --- | --- | --- |
 | US-07 alerts | each scan queues one plain-text message in the log; Gmail (through the scheduled run) or Discord sends it; delivery recorded with retries | `notify.py`, `alert.py` |
 | US-08 append-only log | scan, alert, delivery, mark, feedback and event tables; updates and deletes refused | `store.py` |
-| US-09 daily marks | every open proposal marked at the closing quotes; settlement at expiration | `marks.py` |
+| US-09 daily marks | every open proposal marked at the closing quotes; flags the 50% profit target (the only exit rule); settlement at expiration | `mark.py` |
 | US-10 decisions | accepted, declined, modified N or closed, from the CLI or an email reply | `decisions.py` |
 | US-11, US-12 weekly report | advisor book vs your book, predicted vs realized worst case, failures and anomalies | `report.py` |
 | US-13 remaining buying power (stretch) | sizes against buying power left after open positions | `sizing.py` |
@@ -68,7 +77,7 @@ Python 3.11 or newer. No third-party packages, no install step.
 ```bash
 git clone https://github.com/2004aaron/spx-quant.git
 cd spx-quant
-python -m unittest discover -s tests -t . -v        # 192 tests, about 15 seconds
+python -m unittest discover -s tests -t . -v        # 193 tests, about 20 seconds
 
 python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 --max-worst-case 0.05
 python -m spx_quant profile show
@@ -105,7 +114,8 @@ spx_quant/
   profile.py       account profile                                US-01
   regime.py        classifier and stand-down gate                 US-02, US-04
   data/cboe.py     live feed, replay, freshness check             US-06
-  strategies.py    four structure builders                        US-03
+  strategies.py    strangle, naked put, put vertical builders     US-03
+  trend.py         SPX 50-day vs 200-day filter (rules v2)        US-03
   margin.py        Reg-T and portfolio-margin buying power        US-03
   calibrate.py     margin-check: engine vs broker buying power    US-03
   sizing.py        inclusive BP cap, delta:theta guardrail        US-01, US-03

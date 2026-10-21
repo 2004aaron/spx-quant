@@ -6,7 +6,7 @@ Two rule sets in StormGlass came from the playbook, not from evidence: the regim
 
 | Rule | Before | After | Where |
 |---|---|---|---|
-| Backwardation (inverted VIX curve) | STAND DOWN | Shown as a note, scan continues | `gate.stand_down_on`, Alpha (main) |
+| Backwardation (inverted VIX curve) | STAND DOWN | Shown as a note, scan continues | `regime.STAND_DOWN`, Alpha (main) |
 | VIX below 13 (floor) | STAND DOWN | STAND DOWN (kept) | same |
 | VIX at 28 or above (ceiling) | STAND DOWN | STAND DOWN (kept as a risk rail) | same |
 | 50% profit target | exit | exit, the only default exit | `management.exit_rules`, Beta (`beta-restore`) |
@@ -14,11 +14,11 @@ Two rule sets in StormGlass came from the playbook, not from evidence: the regim
 | 21-DTE defensive exit | exit | off by default | same |
 | Short strike tested (30 delta) | exit | off by default | same |
 
-Every rule is still in the code and can be switched back on in `config/params.toml`. Tail risk is now handled by sizing: each proposal is cut until its stress-test loss (index down 10%, volatility up 10 points) fits inside the account's worst-case cap, 5% of net liquidation by default.
+Only the new defaults ship: the retired rules were removed from the code on October 21 and live in the git history. Tail risk is now handled by sizing: each proposal is cut until its stress-test loss (index down 10%, volatility up 10 points) fits inside the account's worst-case cap, 5% of net liquidation by default.
 
 ## Evidence 1: the gate re-run (Cboe data through 2026-10-16)
 
-`research/rules-pivot/tier_a.py` runs the shipping classifier (`spx_quant.regime.classify`) over every session from January 2011 to September 2026: 3,945 sessions, signal lagged one day, 21-session forward return of five Cboe strategy indices, which are real recorded results of systematic short premium. Returns are annualized. p-values are a circular block bootstrap with 21-session blocks. Output: [rules-pivot-tier-a.json](rules-pivot-tier-a.json).
+[`research/rules-pivot/tier_a.py`](https://github.com/2004aaron/spx-quant/blob/research/research/rules-pivot/tier_a.py) runs the shipping classifier (`spx_quant.regime.classify`) over every session from January 2011 to September 2026: 3,945 sessions, signal lagged one day, 21-session forward return of five Cboe strategy indices, which are real recorded results of systematic short premium. Returns are annualized. p-values are a circular block bootstrap with 21-session blocks. Output: [rules-pivot-tier-a.json](https://github.com/2004aaron/spx-quant/blob/research/docs/results/rules-pivot-tier-a.json).
 
 | Index | Old gate GO | Old gate STAND DOWN | p | New gate GO | New gate STAND DOWN | p |
 |---|---|---|---|---|---|---|
@@ -68,6 +68,8 @@ Read this carefully: it's one month, one market, mid fills, no account, and two 
 - **SPY, not SPX, in the backtest.** Everything in Evidence 2 is SPY. OptionMetrics through the library is still the way to re-run it on SPX.
 
 ## Reproduce
+
+The scripts and raw data are on the [`research` branch](https://github.com/2004aaron/spx-quant/tree/research).
 
 ```
 python research/rules-pivot/tier_a.py          # gate re-run, downloads Cboe histories to .cache/cboe

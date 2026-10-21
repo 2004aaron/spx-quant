@@ -1,9 +1,9 @@
 """Daily marking (US-09)."""
 import unittest
-from datetime import datetime
+from datetime import date, datetime
 
 from spx_quant import clock, mark, pipeline, store
-from tests.helpers import MARK_TIME, PARAMS, PatchedSource, memdb, pm150_loose, replay
+from tests.helpers import MARK_TIME, PARAMS, PatchedSource, TrendReplay, memdb, pm150_loose, replay
 
 
 def pt(y, m, d, hh=13, mm=35):
@@ -13,15 +13,16 @@ def pt(y, m, d, hh=13, mm=35):
 class MarkTest(unittest.TestCase):
     def setUp(self):
         self.conn = memdb()
-        self.alert = pipeline.scan(self.conn, replay(), pm150_loose(), PARAMS, "13:25", send=False).alert
+        self.alert = pipeline.scan(self.conn, TrendReplay(), pm150_loose(), PARAMS, "13:25", send=False).alert
         self.assertEqual((self.alert["kind"], self.alert["strategy"]), ("proposal", "naked_put"))
         self.leg = self.alert["legs"][0]["sym"]
+        self.exp = date.fromisoformat(self.alert["legs"][0]["exp"])
 
     def test_us09_ac1_daily_mark_as_if_opened(self):
         rows = mark.run(self.conn, replay(MARK_TIME), PARAMS)
         self.assertEqual(len(rows), 1)
         m = store.marks_for(self.conn, self.alert["alert_id"])[0]
-        self.assertEqual((m["market_date"], m["settled"], m["dte"]), ("2026-09-28", 0, 46))
+        self.assertEqual((m["market_date"], m["settled"], m["dte"]), ("2026-09-28", 0, (self.exp - date(2026, 9, 28)).days))
         self.assertAlmostEqual(m["pnl"], 0.0, places=2)   # same quotes it was proposed on
         self.assertEqual(mark.run(self.conn, replay(MARK_TIME), PARAMS), [])   # once per day
 
@@ -32,28 +33,15 @@ class MarkTest(unittest.TestCase):
         self.assertEqual(m["settled"], 0)
         self.assertEqual(len(store.open_proposals(self.conn)), 1)
 
-    def test_default_exit_is_the_profit_target_alone(self):
-        self.assertEqual(PARAMS.management["exit_rules"], ["profit_target"])
-        legs = [{"sym": "P", "qty": -1}]
-        board = {"P": {"delta": -0.45}}
+    def test_profit_target_is_the_only_exit(self):
         m = PARAMS.management
-        self.assertIsNone(mark.exit_signal(-900.0, 2500.0, 1000.0, 10, legs, board, m))   # stop, 21 DTE, tested: all off
-        self.assertIn("profit target", mark.exit_signal(500.0, 500.0, 1000.0, 10, legs, board, m))
-
-    def test_old_rules_can_be_switched_back_on(self):
-        legs = [{"sym": "P", "qty": -1}]
-        board = {"P": {"delta": -0.45}}
-        m = {**PARAMS.management, "exit_rules": ["profit_target", "loss_stop", "defensive_exit", "tested_strike"]}
-        self.assertIn("loss stop", mark.exit_signal(-1500.0, 2500.0, 1000.0, 40, legs, board, m))
-        self.assertIn("defensive exit", mark.exit_signal(0.0, 1000.0, 1000.0, 21, legs, board, m))
-        self.assertIn("strike tested", mark.exit_signal(0.0, 1000.0, 1000.0, 40, legs, board, m))
-
-    def test_unknown_exit_rule_is_an_error(self):
-        with self.assertRaises(ValueError):
-            mark.exit_signal(0.0, 1000.0, 1000.0, 40, [], {}, {**PARAMS.management, "exit_rules": ["stop_loss"]})
+        self.assertIsNone(mark.exit_signal(-900.0, 1000.0, m))   # a loss is never an exit signal
+        self.assertIsNone(mark.exit_signal(499.0, 1000.0, m))
+        self.assertIn("profit target", mark.exit_signal(500.0, 1000.0, m))
 
     def test_us09_ac2_settles_at_expiration(self):
-        src = PatchedSource(pt(2026, 11, 13), quote_et="2026-11-13T16:14:59", spot=7000.0)
+        e = self.exp
+        src = PatchedSource(pt(e.year, e.month, e.day), quote_et=f"{e.isoformat()}T16:14:59", spot=7000.0)
         m = mark.run(self.conn, src, PARAMS)[0]
         credit_lot = self.alert["credit_per_lot"]
         strike = self.alert["legs"][0]["strike"]

@@ -7,19 +7,81 @@ from spx_quant import clock, pipeline, store
 from spx_quant.engine import run_scan
 from spx_quant.profile import validate
 from spx_quant.synthetic import SyntheticSource
-from tests.helpers import EOD, PARAMS, memdb, params_without, pm150, pm150_loose, replay
+from tests.helpers import EOD, PARAMS, TrendReplay, memdb, params_with, params_without, pm150, pm150_loose, replay
 
 
 class WorstCaseCutTest(unittest.TestCase):
-    """A 20% buying-power cap allows 4 strangles; 2 x $3,934.67 stress loss is already over the $7,500 limit."""
+    """A 20% buying-power cap allows 5 strangles; 2 lots' stress loss is already over the $7,500 limit."""
 
     def test_worst_case_limit_cuts_the_size(self):
         rec = pipeline.scan(memdb(), replay(), validate(150_000, "portfolio", 0.20, 2), PARAMS, slot="13:25", send=False)
         a = rec.alert
         s = next(c["sized"] for c in a["candidates"] if c["strategy"] == a["strategy"] and c["ticker"] == a["ticker"])
-        self.assertEqual((a["strategy"], s["bp_contracts"], s["contracts"], s["limited_by"]), ("strangle", 4, 1, "worst case"))
+        self.assertEqual((a["strategy"], s["bp_contracts"], s["contracts"], s["limited_by"]), ("strangle", 5, 1, "worst case"))
         self.assertLessEqual(-a["risk"]["worst_case"], 7_500 + 0.03)
-        self.assertIn("Sized down from 4 to 1 lot so the worst case stays inside the limit", a["text"])
+        self.assertIn("Sized down from 5 to 1 lot so the worst case stays inside the limit", a["text"])
+
+
+class TrendTest(unittest.TestCase):
+    """Naked put only in an uptrend (50-day above 200-day), with the looser delta:theta limit; strangle otherwise."""
+
+    def scan(self, drift, profile=None):
+        return pipeline.scan(memdb(), TrendReplay(drift), profile or validate(300_000, "portfolio", 0.10, 2), PARAMS, slot="13:25")
+
+    def test_uptrend_offers_and_prefers_the_naked_put(self):
+        rec = self.scan(0.001)
+        a = rec.alert
+        self.assertTrue(rec.result.trend.up)
+        self.assertEqual(a["strategy"], "naked_put")
+        s = next(c["sized"] for c in a["candidates"] if c["strategy"] == "naked_put" and c["ticker"] == a["ticker"])
+        self.assertEqual(s["dt_limit"], 0.5)
+        self.assertIn("relaxed for a naked put in an uptrend", a["text"])
+        self.assertIn("Ranked first because the trend is up and the naked put is preferred in uptrends", a["text"])
+        self.assertIn("Naked put and put vertical eligible: the 50-day is above the 200-day", a["text"])
+        v = next(c for c in a["candidates"] if c["strategy"] == "put_vertical")
+        self.assertEqual(v["sized"]["dt_limit"], 0.25)
+        self.assertEqual(a["quotes"]["trend"]["state"], "up")
+
+    def test_downtrend_falls_back_to_the_strangle(self):
+        rec = self.scan(-0.001)
+        a = rec.alert
+        self.assertEqual(rec.result.trend.state, "down")
+        self.assertEqual(a["strategy"], "strangle")
+        self.assertFalse([c for c in a["candidates"] if c["strategy"] in ("naked_put", "put_vertical")])
+        self.assertIn("Naked put, put vertical not offered: the 50-day is below the 200-day", a["text"])
+
+    def test_stale_history_counts_as_unknown(self):
+        src = TrendReplay(0.001)
+        from spx_quant.synthetic import history
+        old = history(date(2026, 9, 10))
+        src.history_text = lambda: old
+        rec = pipeline.scan(memdb(), src, validate(300_000, "portfolio", 0.10, 2), PARAMS, slot="13:25")
+        self.assertEqual(rec.result.trend.state, "unknown")
+        self.assertIn("days old", rec.result.trend.reason)
+        self.assertEqual(rec.alert["strategy"], "strangle")
+
+    def test_profile_limit_still_applies_to_the_strangle(self):
+        rec = self.scan(0.001)
+        stranglers = [c for c in rec.alert["candidates"] if c["strategy"] == "strangle"]
+        self.assertTrue(stranglers)
+        for c in stranglers:
+            self.assertEqual(c["sized"]["dt_limit"], 2)
+
+    def test_small_account_vertical_passes_sizing_in_an_uptrend(self):
+        """Only the defined-risk vertical fits a $30k Reg-T account; the risk model still gets the last word
+        (on this board its crash assumption puts EV at -$4, so the scan stands down)."""
+        rec = self.scan(0.001, validate(30_000, "reg_t", 0.20, 2))
+        v = next(c for c in rec.alert["candidates"] if c["strategy"] == "put_vertical" and c["ticker"] == "_XSP")
+        self.assertEqual(v["sized"]["dt_limit"], 0.25)
+        self.assertEqual(v["sized"]["contracts"], 1)
+        self.assertFalse({"delta_theta", "over_cap", "over_worst_case", "wide_fill"} & set(v["codes"]))
+        self.assertEqual(v["codes"], ["negative_ev"])
+
+    def test_thin_structure_is_rejected_for_fill_cost(self):
+        rec = pipeline.scan(memdb(), TrendReplay(0.001), validate(300_000, "portfolio", 0.10, 2),
+                            params_with("put_vertical", width_pct=0.0075, short_delta=0.25), slot="13:25")
+        v = [c for c in rec.alert["candidates"] if c["strategy"] == "put_vertical" and c["ticker"] == "_XSP"]
+        self.assertTrue(v and "wide_fill" in v[0]["codes"])
 
 
 class ProposalTest(unittest.TestCase):
@@ -48,7 +110,7 @@ class ProposalTest(unittest.TestCase):
         self.assertEqual(a["profile"]["net_liq"], 150_000)
 
     def test_buying_power_sets_the_size_when_the_worst_case_fits(self):
-        a = self.alert
+        a = pipeline.scan(memdb(), replay(), validate(150_000, "portfolio", 0.04, 2), PARAMS, slot="13:25").alert
         s = next(c["sized"] for c in a["candidates"] if c["strategy"] == a["strategy"] and c["ticker"] == a["ticker"])
         self.assertEqual((s["bp_contracts"], s["contracts"], s["limited_by"]), (1, 1, "buying power"))
         self.assertLessEqual(-a["risk"]["worst_case"], 7_500 + 0.03)
@@ -56,14 +118,14 @@ class ProposalTest(unittest.TestCase):
         self.assertIn("Worst-case limit: $", a["text"])
         self.assertIn("RISK (model estimates for 1 lot)", a["text"])
 
-    def test_naked_put_is_too_directional_at_1_to_2_in_spy_deltas(self):
+    def test_naked_put_not_offered_without_a_trend_reading(self):
         self.assertEqual((self.alert["strategy"], self.alert["ticker"]), ("strangle", "_XSP"))
-        put = next(c for c in self.alert["candidates"] if c["strategy"] == "naked_put" and c["ticker"] == "_XSP")
-        self.assertIn("delta_theta", put["codes"])
-        self.assertIn("SPY deltas", " ".join(put["reasons"]))
+        self.assertFalse([c for c in self.alert["candidates"] if c["strategy"] == "naked_put"])
+        self.assertIn("Naked put, put vertical not offered: the trend could not be read", self.alert["text"])
+        self.assertIn("Trend: unknown", self.alert["text"])
 
     def test_us03_ac2_ranked_by_annual_return_on_bp_and_runner_up_shown(self):
-        rec = pipeline.scan(memdb(), replay(), pm150_loose(), PARAMS, slot="13:25", send=False)
+        rec = pipeline.scan(memdb(), TrendReplay(), pm150_loose(), params_with("trend", prefer_up=[]), slot="13:25", send=False)
         ranked = rec.result.ranked
         self.assertGreaterEqual(len(ranked), 2)
         rets = [c.risk.ann_return_bp for c in ranked]

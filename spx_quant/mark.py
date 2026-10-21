@@ -2,7 +2,7 @@
 
 Runs once after the close. Each open proposal gets one mark row per trading day at
 that day's closing quotes: cost to close at mid, P/L against the logged credit, and
-the first management rule that would have fired (informational; marking continues).
+whether the 50% profit target has been reached (informational; marking continues).
 On or after expiration the position settles at intrinsic value against the index
 level the feed shows. SPXW and XSP settle on the close, so a same-day mark is exact;
 SPX standard monthlies settle on the morning's opening print, which the delayed
@@ -21,32 +21,11 @@ def intrinsic(leg: dict, s: float) -> float:
     return max(0.0, s - leg["strike"]) if leg["right"] == "C" else max(0.0, leg["strike"] - s)
 
 
-EXIT_RULES = ("profit_target", "loss_stop", "defensive_exit", "tested_strike")
-
-
-def exit_rules(m: dict) -> tuple[str, ...]:
-    rules = tuple(m.get("exit_rules", EXIT_RULES))
-    unknown = [r for r in rules if r not in EXIT_RULES]
-    if unknown:
-        raise ValueError(f"management.exit_rules names unknown rules: {', '.join(unknown)}")
-    return rules
-
-
-def exit_signal(pnl_lot: float, cost_lot: float, credit_lot: float, dte: int, legs: list[dict],
-                board: dict, m: dict) -> str | None:
-    """First enabled exit rule that fires, in a fixed order. Only management.exit_rules are checked:
-    the default is the 50% profit target alone (docs/results/rules-pivot.md)."""
-    on = exit_rules(m)
-    if "profit_target" in on and credit_lot > 0 and pnl_lot >= m["profit_target"] * credit_lot:
+def exit_signal(pnl_lot: float, credit_lot: float, m: dict) -> str | None:
+    """The 50% profit target, the only exit rule since the 2026-10-19 rules pivot
+    (docs/results/rules-pivot.md). Informational: marking continues either way."""
+    if credit_lot > 0 and pnl_lot >= m["profit_target"] * credit_lot:
         return f"profit target ({pnl_lot / credit_lot:.0%} of credit)"
-    if "loss_stop" in on and credit_lot > 0 and cost_lot >= m["loss_multiple"] * credit_lot:
-        return f"loss stop (cost to close {cost_lot / credit_lot:.1f}x credit)"
-    if "defensive_exit" in on and dte <= m["defensive_dte"]:
-        return f"defensive exit at {dte} DTE"
-    if "tested_strike" in on:
-        shorts = [abs(board[l["sym"]]["delta"]) for l in legs if l["qty"] < 0 and l["sym"] in board]
-        if shorts and max(shorts) >= m["tested_delta"]:
-            return f"short strike tested ({max(shorts):.2f} delta)"
     return None
 
 
@@ -76,7 +55,7 @@ def mark_one(alert: dict, spot: float, board: dict, today: date, now: datetime, 
     pnl_lot = credit_lot - cost_lot
     row.update(mid=round(cost_lot, 2), pnl=round(pnl_lot * k, 2), settled=0, basis="mid of closing quotes",
                pnl_pct_credit=round(pnl_lot / credit_lot, 4) if credit_lot else None,
-               exit_signal=exit_signal(pnl_lot, cost_lot, credit_lot, dte, legs, board, params.management),
+               exit_signal=exit_signal(pnl_lot, credit_lot, params.management),
                legs=[{"sym": l["sym"], **{f: board[l["sym"]][f] for f in ("bid", "ask", "mid", "delta")}} for l in legs])
     return row
 

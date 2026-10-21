@@ -91,7 +91,7 @@ class DeliveryTest(unittest.TestCase):
         subject, body = ch.sent[1]
         self.assertIn("still stands", subject)
         self.assertLess(len(body), len(ch.sent[0][1]) / 2)
-        for s in ("Data as of: ", "VIX3M 18.23", "bid 4.24", "ask 4.49", "worst case -$"):
+        for s in ("Data as of: ", "VIX3M 18.23", "bid 4.97", "ask 5.19", "worst case -$"):
             self.assertIn(s, body)
 
     def test_us07_ac3_retried_then_delivered(self):
