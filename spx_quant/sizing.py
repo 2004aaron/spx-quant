@@ -63,9 +63,11 @@ def delta_theta_ok(delta: float, theta: float, limit: float) -> bool:
 
 
 def size(profile: Profile, bp_per_lot: float, delta_per_lot: float, theta_per_lot: float,
-         worst_per_lot: float = 0.0) -> Sized:
+         worst_per_lot: float = 0.0, dt_limit: float | None = None) -> Sized:
+    """dt_limit replaces the profile's delta:theta limit when given (naked put in an uptrend)."""
     cap = profile.bp_cap_dollars
-    s = Sized(0, round(bp_per_lot, 2), 0.0, cap, delta_per_lot, theta_per_lot, profile.delta_theta_limit,
+    dt = profile.delta_theta_limit if dt_limit is None else dt_limit
+    s = Sized(0, round(bp_per_lot, 2), 0.0, cap, delta_per_lot, theta_per_lot, dt,
               worst_per_lot=round(max(worst_per_lot, 0.0), 2), worst_limit=profile.worst_case_limit)
     if cents(bp_per_lot) <= 0:
         s.reasons.append("buying power could not be computed")
@@ -88,8 +90,8 @@ def size(profile: Profile, bp_per_lot: float, delta_per_lot: float, theta_per_lo
     if theta_per_lot <= 0:
         s.reasons.append(f"theta ${theta_per_lot:,.2f}/day is not positive; not a premium-selling position")
         s.codes.append("theta")
-    elif not delta_theta_ok(delta_per_lot, theta_per_lot, profile.delta_theta_limit):
-        s.reasons.append(f"delta:theta {s.dt_text()} breaks the 1:{profile.delta_theta_limit:g} limit "
+    elif not delta_theta_ok(delta_per_lot, theta_per_lot, dt):
+        s.reasons.append(f"delta:theta {s.dt_text()} breaks the 1:{dt:g} limit "
                          f"(delta {delta_per_lot:+.2f} SPY deltas, theta ${theta_per_lot:,.2f}/day per lot)")
         s.codes.append("delta_theta")
     if s.ok:

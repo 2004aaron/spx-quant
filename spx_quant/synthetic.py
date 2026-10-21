@@ -58,16 +58,30 @@ def curve(vix: float, shape: str, quote_ts: datetime) -> dict:
     return {sym: {"data": {"current_price": round(v, 2), "last_trade_time": _et(quote_ts)}} for sym, v in vals.items()}
 
 
+def history(end: date, days: int = 260, start: float = 6000.0, drift: float = 0.001) -> str:
+    """Cboe-style SPX_History.csv text: `days` trading-day closes ending on `end`, compounding at `drift` a day
+    (positive drift gives an uptrend, negative a downtrend)."""
+    rows, d, px = [], end, start * (1 + drift) ** days
+    while len(rows) < days:
+        if d.weekday() < 5:
+            rows.append(f"{d:%m/%d/%Y},{px:.2f}")
+            px /= 1 + drift
+        d -= timedelta(days=1)
+    return "DATE,SPX\n" + "\n".join(reversed(rows)) + "\n"
+
+
 class SyntheticSource:
     name = "synthetic"
 
     def __init__(self, vix: float, shape: str = "contango", spot: float = 7600.0, now: datetime | None = None,
-                 age_minutes: float = 15, tickers=("_SPX", "_XSP"), missing: tuple = ()):
+                 age_minutes: float = 15, tickers=("_SPX", "_XSP"), missing: tuple = (), history: str | None = None):
         self._now = now or clock.local_to_utc("PT", datetime(2026, 10, 7, 10, 30))
         q = self._now - timedelta(minutes=age_minutes)
         atm = vix / 100 * 0.9
         self.chains = {t: board(t, spot if t == "_SPX" else spot / 10, atm, self._now, q) for t in tickers}
         self.curve = {k: v for k, v in curve(vix, shape, q).items() if k not in missing}
+        if history is not None:
+            self.history_text = lambda: history
 
     def chain_payload(self, ticker: str) -> dict:
         if ticker not in self.chains:
