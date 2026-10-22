@@ -3,8 +3,7 @@
 Reg-T follows the Cboe rule for broad-based index options. Portfolio margin is a
 TIMS-style scan: worst loss over ten equidistant index moves from -15% to +10%
 (tastytrade's published minimum for equity indices; the regulatory floor is -8% to
-+6%), legs repriced at their own IV. pm_house_multiplier calibrates the result to
-one real broker ticket (python -m spx_quant margin-check).
++6%), legs repriced at their own IV.
 """
 from __future__ import annotations
 
@@ -50,7 +49,7 @@ def portfolio(pos: Position, spot: float, now: datetime, params: Params) -> floa
     m = params.margin
     worst = -min(pnl for _, pnl in pm_scenarios(pos, spot, now, params))
     floor = m["pm_min_per_contract"] * sum(1 for l in pos.legs if l.qty < 0)
-    req = max(worst, floor) * m["pm_house_multiplier"]
+    req = max(worst, floor)
     if pos.defined_risk:
         req = min(req, max(pos.width * MULTIPLIER - pos.credit, floor))
     return req

@@ -27,8 +27,8 @@ has a test; the map is in [`docs/story-map.md`](docs/story-map.md).
 | --- | --- | --- |
 | US-01 account profile | size, margin type, BP cap, delta:theta limit, worst-case limit; account tiers; bad input keeps the old profile | `profile.py` |
 | US-02 regime | contango / flat / backwardation and a volatility bucket, with the VIX values and a timestamp; names a missing point | `regime.py` |
-| US-03 sized proposal | four builders (strangle, naked put, put vertical, iron condor) on SPX, falling back to XSP when SPX can't fit; Reg-T and portfolio margin; inclusive cap; contracts cut so the stress-test worst case stays within the profile's limit (default 5% of net liq); account tiers set the delta:theta default (1:2 under $1M, 1:7 above, in SPY-weighted deltas); ranked by expected annual return on buying power | `strategies.py`, `margin.py`, `sizing.py`, `engine.py` |
-| US-04 stand-down | floor 13 and ceiling 28 by default (`gate.stand_down_on`); backwardation shown as information since the [2026-10-19 rules pivot](docs/results/rules-pivot.md); reasons logged | `regime.py`, `engine.py` |
+| US-03 sized proposal | three builders (strangle, naked put, put vertical) about 60 days out, on SPX, falling back to XSP when SPX can't fit; Reg-T and portfolio margin; inclusive cap; contracts cut so the stress-test worst case stays within the profile's limit (default 5% of net liq); account tiers set the delta:theta default (1:2 under $1M, 1:7 above, in SPY-weighted deltas); naked put and put vertical only when the SPX 50-day is above the 200-day; a structure whose bid/ask fill gives up more than 25% of the credit is refused; ranked naked put first in an uptrend, then by expected annual return on buying power | `strategies.py`, `trend.py`, `margin.py`, `sizing.py`, `engine.py` |
+| US-04 stand-down | STAND DOWN only below the VIX 13 floor or at the 28 ceiling (`regime.STAND_DOWN`); backwardation shown as information since the [2026-10-19 rules pivot](docs/results/rules-pivot.md); reasons logged | `regime.py`, `engine.py` |
 | US-05 risk block | probability of profit, expected value, worst case (index -10%, volatility +10 points), CVaR 5% / 1%, breakevens, stress rows, implied crash rate, stated assumptions; refuses to default a missing assumption | `analytics.py` |
 | US-06 data check | one fetch per scan, checked for shape, size and quote age before use; NO ADVICE on stale or incomplete data | `data/cboe.py` |
 | Scan log | every scheduled scan and its result, with the quotes behind it, in append-only SQLite | `store.py`, `pipeline.py` |
@@ -52,6 +52,9 @@ The SPX backtests on OptionsDX data (2010 to 2023) changed what the engine build
 no iron condor, naked puts and wide put verticals only when the SPX 50-day is above the 200-day, and a
 fill-cost guard on thin structures. Evidence and the end-to-end comparison: [`docs/results/rules-v2.md`](docs/results/rules-v2.md).
 
+Only the current rule set is in the code. The retired rules are in the git history, and the backtest
+scripts and raw data that produced the evidence are on the [`research` branch](https://github.com/2004aaron/spx-quant/tree/research).
+
 Beta (November 16) and RC (December 9) stories ship in later releases, on the schedule
 in the proposal.
 
@@ -62,19 +65,17 @@ Python 3.11 or newer. No third-party packages, no install step.
 ```bash
 git clone https://github.com/2004aaron/spx-quant.git
 cd spx-quant
-python -m unittest discover -s tests -t . -v        # 157 tests, about 15 seconds
+python -m unittest discover -s tests -t . -v        # 139 tests, about 10 seconds
 
 python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 --max-worst-case 0.05
 python -m spx_quant profile show
 
-python -m spx_quant probe             # feed check against the live Cboe board
 python -m spx_quant regime            # VIX term structure -> regime and gate
 python -m spx_quant scan              # full scan, logged to ~/.spx-quant/quant.db
 python -m spx_quant log --from 2026-10-05
 python -m spx_quant kr a1             # A-KR1: both scans on every trading day, Oct 5-16
 python -m spx_quant kr a2 --plant     # A-KR2: entry check, with the planted-row proof
 python -m spx_quant kr a3             # A-KR3: sizing matrix
-python -m spx_quant margin-check      # compare engine buying power with one broker ticket
 ```
 
 Global options go before the command: `--profile PATH`, `--db PATH`, `--params PATH`.
@@ -99,9 +100,9 @@ spx_quant/
   profile.py       account profile                                US-01
   regime.py        classifier and stand-down gate                 US-02, US-04
   data/cboe.py     live feed, replay, freshness check             US-06
-  strategies.py    four structure builders                        US-03
+  strategies.py    strangle, naked put, put vertical builders     US-03
+  trend.py         SPX 50-day vs 200-day filter (rules v2)        US-03
   margin.py        Reg-T and portfolio-margin buying power        US-03
-  calibrate.py     margin-check: engine vs broker buying power    US-03
   sizing.py        inclusive BP cap, delta:theta guardrail        US-01, US-03
   analytics.py     risk block                                     US-05
   engine.py        one scan, pure: returns a ScanResult
@@ -112,7 +113,7 @@ spx_quant/
   synthetic.py     synthetic boards for tests and A-KR3
   clock.py         Eastern/Pacific time and the NYSE calendar without tzdata
 config/params.toml every parameter with a validation tag and a source
-deploy/            Windows Task Scheduler script, cloud log carrier
+deploy/cloud/      log carrier: SQLite log <-> checksummed SQL dump
 docs/              build notes, backtest findings, story map, operations, KR results
 tests/             unittest suite; tests/data holds the recorded session
 ```

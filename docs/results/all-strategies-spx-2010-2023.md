@@ -1,6 +1,6 @@
 # All four strategies on SPX, 2010 to 2023 (OptionsDX)
 
-Every StormGlass builder (strangle, naked put, put vertical, iron condor), replayed on OptionsDX SPX end-of-day chains. Strikes are picked by the production code (`spx_quant.strategies.build`) with today's `params.toml`, so each trade is the one the engine would have built that day. Buying power comes from `spx_quant.margin`. A new 1-lot trade opens every 3 sessions. Exits are the 50% profit target (read on the mid) or expiration, settled at the close. Script: `research/spx-replay/all_strategies.py`. Raw output: [`all-strategies-spx-2010-2023.json`](all-strategies-spx-2010-2023.json).
+Every StormGlass builder (strangle, naked put, put vertical, iron condor), replayed on OptionsDX SPX end-of-day chains. Strikes are picked by the production code (`spx_quant.strategies.build`) with today's `params.toml`, so each trade is the one the engine would have built that day. Buying power comes from `spx_quant.margin`. A new 1-lot trade opens every 3 sessions. Exits are the 50% profit target (read on the mid) or expiration, settled at the close. Script: `research/spx-replay/all_strategies.py`. Raw output: [`all-strategies-spx-2010-2023.json`](https://github.com/2004aaron/spx-quant/blob/research/docs/results/all-strategies-spx-2010-2023.json).
 
 Two fill modes bracket execution. **Bid/ask** sells every leg at the bid and buys at the ask, which is the worst realistic case. **Mid** fills at the midpoint, which is the best case.
 
@@ -45,6 +45,8 @@ Spread buying power is tiny (about $1,450 a lot against $18,000 to $19,000 for t
 - Close settlement for every expiry; no commissions.
 
 ## Reproduce
+
+The scripts and raw data are on the [`research` branch](https://github.com/2004aaron/spx-quant/tree/research).
 
 ```
 python research/spx-replay/all_strategies.py data/optionsdx/spx --dte 45 60 \

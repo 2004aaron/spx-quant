@@ -14,7 +14,7 @@ class RiskTest(unittest.TestCase):
         cls.chain, _ = fetch_chain(replay(), "_SPX", 30, 1000)
         today = clock.market_date(EOD)
         cls.strangle = build("strangle", "_SPX", cls.chain.spot, cls.chain.rows, today, PARAMS)
-        cls.condor = build("iron_condor", "_SPX", cls.chain.spot, cls.chain.rows, today, PARAMS)
+        cls.vertical = build("put_vertical", "_SPX", cls.chain.spot, cls.chain.rows, today, PARAMS)
         cls.iv = analytics.atm_iv(cls.chain.rows, cls.strangle.root, cls.strangle.exp, cls.chain.spot)
 
     def risk(self, pos, params=PARAMS, k=2, bp=40_000):
@@ -48,7 +48,7 @@ class RiskTest(unittest.TestCase):
             self.assertIn(f"risk.{key}", str(cm.exception))
 
     def test_defined_risk_tail_is_capped_by_max_loss(self):
-        r = self.risk(self.condor)
+        r = self.risk(self.vertical)
         self.assertIsNotNone(r.max_loss)
         self.assertGreaterEqual(r.cvar1, -r.max_loss - 0.01)
 

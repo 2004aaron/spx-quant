@@ -3,7 +3,7 @@ from datetime import date
 
 from spx_quant import clock
 from spx_quant.data.cboe import fetch_chain, parse_chain
-from spx_quant.strategies import BUILDERS, build, liquid, pick_strangle
+from spx_quant.strategies import BUILDERS, build, liquid
 from tests.helpers import EOD, PARAMS, replay
 from tests.test_feed import payload, row
 
@@ -25,7 +25,7 @@ class SyntheticBoardTest(unittest.TestCase):
     def test_liquidity_prefilter_then_delta_match(self):
         _, rows = parse_chain(self.raw)
         self.assertEqual(len(liquid(rows, PARAMS)), 6)
-        t = pick_strangle(rows, self.today, PARAMS)
+        t = build("strangle", "_SPX", 6450.0, rows, self.today, PARAMS)
         self.assertEqual(t.dte, 58)
         self.assertEqual(sorted(l.strike for l in t.legs), [6000.0, 6900.0])
         self.assertAlmostEqual(t.credit, 3600.0)
@@ -35,7 +35,7 @@ class SyntheticBoardTest(unittest.TestCase):
         for o in self.raw["data"]["options"]:
             o["open_interest"] = o["volume"] = 0
         _, rows = parse_chain(self.raw)
-        self.assertIsNone(pick_strangle(rows, self.today, PARAMS))
+        self.assertIsNone(build("strangle", "_SPX", 6450.0, rows, self.today, PARAMS))
 
 
 class RecordedBoardTest(unittest.TestCase):
@@ -71,13 +71,10 @@ class RecordedBoardTest(unittest.TestCase):
         self.assertLessEqual(abs(abs(put.delta) - abs(call.delta)), 0.02)
         self.assertLess(abs(p.net_delta), 30)   # SPY deltas on an SPX lot
 
-    def test_wings_sit_further_out_of_the_money(self):
-        ic = self.build("iron_condor")
-        by = {(l.right, l.qty): l.strike for l in ic.legs}
-        self.assertLess(by[("P", 1)], by[("P", -1)])
-        self.assertGreater(by[("C", 1)], by[("C", -1)])
-        self.assertGreater(ic.width, 0)
+    def test_put_vertical_wing_sits_below_the_short_put(self):
         v = self.build("put_vertical")
+        by = {l.qty: l.strike for l in v.legs}
+        self.assertLess(by[1], by[-1])
         self.assertTrue(v.defined_risk)
         self.assertEqual(v.width, max(l.strike for l in v.legs) - min(l.strike for l in v.legs))
 
