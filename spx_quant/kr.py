@@ -254,9 +254,9 @@ def a3_case(net_liq: float, margin_type: str, regime: str, vix: float, params: P
 def a3(params: Params) -> tuple[str, bool]:
     rows, total_v, total_w = [], 0, 0
     for size in A3_SIZES:
-        for margin in A3_MARGINS:
+        for margin_type in A3_MARGINS:
             for regime, vix in A3_REGIMES:
-                prof, res, v, w = a3_case(size, margin, regime, vix, params)
+                prof, res, v, w = a3_case(size, margin_type, regime, vix, params)
                 total_v += len(v)
                 total_w += len(w)
                 b = res.best
@@ -267,7 +267,7 @@ def a3(params: Params) -> tuple[str, bool]:
                 wc = f"${b.sized.worst_total:,.0f} of ${prof.worst_case_limit:,.0f}" if b else "-"
                 if b and b.sized.limited_by == "worst case":
                     wc += f" (cut from {b.sized.bp_contracts})"
-                rows.append([f"${size:,}", margin, f"{regime} (VIX {vix})", res.outcome, what, bp,
+                rows.append([f"${size:,}", margin_type, f"{regime} (VIX {vix})", res.outcome, what, bp,
                              f"${prof.bp_cap_dollars:,.0f}", dt, wc, len(v)])
     text = "### A-KR3 sizing matrix: 4 account sizes x 2 margin types x 3 regimes\n\n"
     text += _table(["net liq", "margin", "regime", "outcome", "best candidate", "BP used", "cap", "delta:theta",
