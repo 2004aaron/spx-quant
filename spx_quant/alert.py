@@ -32,7 +32,6 @@ def _money(x: float | None, signed: bool = False) -> str:
 
 
 def _leg_line(c: Candidate, leg) -> str:
-    p = c.position
     side = "SELL" if leg.qty < 0 else "BUY"
     n = abs(leg.qty) * c.sized.contracts
     kind = "put" if leg.right == "P" else "call"

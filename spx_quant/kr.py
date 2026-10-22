@@ -145,7 +145,6 @@ def a2_checks(conn, alert: dict, params: Params) -> dict[str, str]:
 
 def _plant_rows(conn, params: Params, day: date) -> dict[str, str]:
     """Insert one bad proposal per check into a copy of the log; returns {alert_id: check it must fail}."""
-    liq = params.liquidity
     base_legs = [
         {"sym": "SPXW261120P06900000", "right": "P", "strike": 6900.0, "exp": "2026-11-20", "qty": -1,
          "bid": 20.0, "ask": 20.6, "mid": 20.3, "iv": 0.19, "delta": -0.16, "oi": 900, "vol": 150},

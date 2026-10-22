@@ -65,19 +65,17 @@ Python 3.11 or newer. No third-party packages, no install step.
 ```bash
 git clone https://github.com/2004aaron/spx-quant.git
 cd spx-quant
-python -m unittest discover -s tests -t . -v        # 141 tests, about 12 seconds
+python -m unittest discover -s tests -t . -v        # 139 tests, about 10 seconds
 
 python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 --max-worst-case 0.05
 python -m spx_quant profile show
 
-python -m spx_quant probe             # feed check against the live Cboe board
 python -m spx_quant regime            # VIX term structure -> regime and gate
 python -m spx_quant scan              # full scan, logged to ~/.spx-quant/quant.db
 python -m spx_quant log --from 2026-10-05
 python -m spx_quant kr a1             # A-KR1: both scans on every trading day, Oct 5-16
 python -m spx_quant kr a2 --plant     # A-KR2: entry check, with the planted-row proof
 python -m spx_quant kr a3             # A-KR3: sizing matrix
-python -m spx_quant margin-check      # compare engine buying power with one broker ticket
 ```
 
 Global options go before the command: `--profile PATH`, `--db PATH`, `--params PATH`.
@@ -105,7 +103,6 @@ spx_quant/
   strategies.py    strangle, naked put, put vertical builders     US-03
   trend.py         SPX 50-day vs 200-day filter (rules v2)        US-03
   margin.py        Reg-T and portfolio-margin buying power        US-03
-  calibrate.py     margin-check: engine vs broker buying power    US-03
   sizing.py        inclusive BP cap, delta:theta guardrail        US-01, US-03
   analytics.py     risk block                                     US-05
   engine.py        one scan, pure: returns a ScanResult
@@ -116,7 +113,7 @@ spx_quant/
   synthetic.py     synthetic boards for tests and A-KR3
   clock.py         Eastern/Pacific time and the NYSE calendar without tzdata
 config/params.toml every parameter with a validation tag and a source
-deploy/            Windows Task Scheduler script, cloud log carrier
+deploy/cloud/      log carrier: SQLite log <-> checksummed SQL dump
 docs/              build notes, backtest findings, story map, operations, KR results
 tests/             unittest suite; tests/data holds the recorded session
 ```
