@@ -55,7 +55,7 @@ class DeliveryTest(unittest.TestCase):
         self.assertIn(f"NO CHANGE since {first.alert['alert_id']}", body)
         self.assertEqual(second.alert["repeat_of"], first.alert["alert_id"])
         self.assertEqual(second.alert["text"], body)   # the log holds exactly what was sent
-        third = scan(conn, ch, vix=12.0)   # conditions changed: full alert again
+        scan(conn, ch, vix=12.0)   # conditions changed: full alert again
         self.assertNotIn("NO CHANGE", ch.sent[2][0])
 
     def test_latency_is_measured_on_a_moving_clock(self):

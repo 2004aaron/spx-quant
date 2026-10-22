@@ -6,7 +6,7 @@ from pathlib import Path
 
 from spx_quant import clock, decisions, kr, mark, outbox, pipeline, report, store
 from spx_quant.profile import validate
-from tests.helpers import EOD, MARK_TIME, PARAMS, PatchedSource, memdb, pm150, replay
+from tests.helpers import EOD, MARK_TIME, PARAMS, PatchedSource, memdb, replay
 
 GMAIL = validate(150_000, "portfolio", notify_channel="gmail", email_to="me@example.com")
 

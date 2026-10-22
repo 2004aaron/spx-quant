@@ -256,30 +256,3 @@ def fetch_curve(source, stale_after_minutes: float, now: datetime | None = None)
                 vals[key] = None
     return Curve(vals, stamps, notes), stale
 
-
-def record(source, tickers: list[str], path: Path | str, dte_max: int = 75) -> Path:
-    """Save the current payloads for replay, trimmed to expirations within dte_max."""
-    now = source.now()
-    today = clock.market_date(now)
-    chains = {}
-    for t in tickers:
-        raw = source.chain_payload(t)
-        keep = []
-        for o in raw["data"]["options"]:
-            m = OCC.match(o.get("option", ""))
-            if m and (date(2000 + int(m["y"]), int(m["m"]), int(m["d"])) - today).days <= dte_max:
-                keep.append(o)
-        raw = dict(raw, data=dict(raw["data"], options=keep))
-        chains[t] = raw
-    curve = {}
-    for sym in CURVE.values():
-        try:
-            curve[sym] = source.quote_payload(sym)
-        except Exception:
-            pass
-    rec = {"recorded_utc": now.isoformat(), "chains": chains, "curve": curve}
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with gzip.open(path, "wt", encoding="utf-8") as f:
-        json.dump(rec, f, separators=(",", ":"))
-    return path

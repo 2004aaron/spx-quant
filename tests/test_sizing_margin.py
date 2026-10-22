@@ -1,4 +1,3 @@
-import copy
 import unittest
 from datetime import date, datetime, timezone
 
@@ -43,13 +42,6 @@ class PortfolioMarginTest(unittest.TestCase):
         self.assertEqual(len(scen), 10)
         self.assertEqual(min(scen, key=lambda s: s[1])[0], -0.15)
         self.assertLess(margin.bp_per_lot(p, 7000, "portfolio", NOW, PARAMS), margin.bp_per_lot(p, 7000, "reg_t", NOW, PARAMS))
-
-    def test_house_multiplier_scales(self):
-        p = pos("naked_put", [leg("P", 6500, 20.0, -1, -0.10)])
-        base = margin.bp_per_lot(p, 7000, "portfolio", NOW, PARAMS)
-        q = copy.deepcopy(PARAMS)
-        q.sections["margin"]["pm_house_multiplier"] = 1.5
-        self.assertAlmostEqual(margin.bp_per_lot(p, 7000, "portfolio", NOW, q), base * 1.5, places=1)
 
     def test_defined_risk_never_exceeds_max_loss(self):
         p = pos("put_vertical", [leg("P", 6800, 30.0, -1, -0.25), leg("P", 6750, 22.0, 1, -0.21)], width=50)

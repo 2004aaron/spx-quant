@@ -50,18 +50,6 @@ of slack: after the 13:15 close the quotes age past the 30-minute limit around 1
 The older "StormGlass shadow log" task (2:30 PM PT) keeps running beside these; it
 writes its own documents and does not count toward A-KR1.
 
-## Setup on one machine (through Alpha)
-
-```powershell
-python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 `
-    --notify email --email-to you@example.com
-.\deploy\windows\register_tasks.ps1
-```
-
-The PC must be on Pacific time. The script sets WakeToRun so a sleeping laptop wakes
-for the slot; a laptop that is shut down still misses it, which is why Beta moves to a
-server.
-
 ## Beta host (from November 16)
 
 A small Linux VM (proposal 5.5 prices a Hetzner CX23). Install Python 3.11+, clone the
@@ -186,14 +174,9 @@ Pilot profile: $150,000, portfolio margin (standard tier).
 
 ## Open decisions this build exposed
 
-1. **Portfolio-margin calibration.** The engine's scan range is now tastytrade's
-   published minimum for equity indices (-15% to +10%), not the regulatory floor
-   (-8% to +6%). It is still a model. To match the broker exactly:
-   `python -m spx_quant margin-check` prints the latest proposal as a ticket; enter it
-   in tastytrade without sending, then run
-   `python -m spx_quant margin-check --broker-bp <ticket BP> --apply`. That writes
-   `margin.pm_house_multiplier` = broker / engine and records the check in its
-   provenance. Repeat on a strangle once one is proposed.
+1. **Portfolio margin is a model.** The engine scans tastytrade's published range for
+   equity indices (-15% to +10%), not the regulatory floor (-8% to +6%). The broker's
+   number can differ.
 2. **How A-KR2 reads "checked against the next 10:30 scan".** The script checks an
    end-of-day proposal's legs for listing, bids, liquidity and quote age on the next
    morning's board. The credit is checked against the quotes it was built on, not the

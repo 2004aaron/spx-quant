@@ -3,16 +3,12 @@
   profile set --net-liq N --margin reg_t|portfolio [--bp-cap 0.08] [--dt-limit N]
               [--notify none|email|discord|gmail] [--email-to ADDR] [--max-worst-case 0.05]
   profile show
-  probe   [--ticker _SPX]                       feed check: shape, size, quote age
   regime                                        VIX term structure -> regime and gate
   scan    [--slot HH:MM] [--no-send] [--replay FILE [--now ISO]]
   mark    [--replay FILE [--now ISO]]           daily marking job
   log     [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--kind K] [--full]
-  record  --out FILE.json.gz                    save the current boards for replay
   kr      a1|a2|a3|b1|b2|b3|rc1|rc2|rc3|s1 [--from D] [--to D] [--plant] [--broker CSV]
   notify-test                                   send a test message on the profile's channel
-  margin-check [--alert ID] [--broker-bp N [--apply]]
-                                                compare engine buying power with one broker ticket
   outbox                                        queued Gmail messages as JSON (the scheduled task sends them)
   delivered ID [--ref MSG_ID | --failed ERROR]  record the result of one Gmail send
   decide ID accepted|declined|modified|closed [--contracts N] [--reason TEXT] [--source S] [--ref R]
@@ -29,7 +25,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from . import __version__, calibrate, clock, decisions, kr, mark, notify, outbox, pipeline, report, store
+from . import __version__, clock, decisions, kr, mark, notify, outbox, pipeline, report, store
 from . import profile as prof
 from .data import cboe
 from .params import DEFAULT_PATH as PARAMS_PATH, load_params
@@ -74,13 +70,6 @@ def cmd_profile(a, params) -> int:
         return 2
     print(f"saved {prof.save(p, a.profile)}\n{p}")
     return 0
-
-
-def cmd_probe(a, params) -> int:
-    f = params.feed
-    _, res = cboe.fetch_chain(_source(a, params), a.ticker, f["stale_after_minutes"], f.get("min_rows", 1))
-    print(res)
-    return 0 if res.ok else 1
 
 
 def cmd_regime(a, params) -> int:
@@ -134,12 +123,6 @@ def cmd_log(a, params) -> int:
     return 0
 
 
-def cmd_record(a, params) -> int:
-    path = cboe.record(cboe.LiveSource(params.feed["timeout_seconds"]), list(params.feed["tickers"]), a.out)
-    print(f"recorded {path}")
-    return 0
-
-
 def cmd_kr(a, params) -> int:
     conn = store.connect(a.db) if a.which != "a3" else None
     start = date.fromisoformat(a.start) if a.start else None
@@ -165,26 +148,6 @@ def cmd_notify_test(a, params) -> int:
         print(f"failed: {type(e).__name__}: {e}")
         return 1
     print(f"sent via {ch.name}")
-    return 0
-
-
-def cmd_margin_check(a, params) -> int:
-    conn = store.connect(a.db)
-    alert = store.get_alert(conn, a.alert) if a.alert else calibrate.latest_proposal(conn)
-    if alert is None or alert["kind"] != "proposal":
-        print(f"no proposal {a.alert} in {a.db}" if a.alert else f"no proposals in {a.db}; run a scan first")
-        return 1
-    try:
-        text, ratio = calibrate.report(alert, params, a.broker_bp)
-    except ValueError as e:
-        print(f"rejected: {e}")
-        return 2
-    print(text)
-    if a.apply and ratio is not None:
-        calibrate.apply(a.params, ratio, alert, a.broker_bp, calibrate.engine_bp(alert, params), date.today())
-        print(f"wrote pm_house_multiplier = {ratio} to {a.params}")
-    elif a.apply:
-        print("nothing written")
     return 0
 
 
@@ -279,11 +242,6 @@ def main(argv: list[str] | None = None) -> int:
         q.add_argument("--replay", help="recorded .json.gz session instead of the live feed")
         q.add_argument("--now", help="ISO time to evaluate a replay at (default: when it was recorded)")
 
-    q = sub.add_parser("probe")
-    q.add_argument("--ticker", default="_SPX")
-    replayable(q)
-    q.set_defaults(fn=cmd_probe)
-
     q = sub.add_parser("regime")
     replayable(q)
     q.set_defaults(fn=cmd_regime)
@@ -304,10 +262,6 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("--kind", choices=["proposal", "stand_down", "no_advice"])
     q.add_argument("--full", action="store_true")
     q.set_defaults(fn=cmd_log)
-
-    q = sub.add_parser("record")
-    q.add_argument("--out", required=True)
-    q.set_defaults(fn=cmd_record)
 
     q = sub.add_parser("kr")
     q.add_argument("which", choices=kr.CHECKS)
@@ -351,12 +305,6 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("--days", type=int, default=7)
     q.add_argument("--out")
     q.set_defaults(fn=cmd_report)
-
-    q = sub.add_parser("margin-check")
-    q.add_argument("--alert", help="proposal alert ID (default: the latest proposal in the log)")
-    q.add_argument("--broker-bp", type=float, help="buying-power effect shown in the broker's ticket for the whole order")
-    q.add_argument("--apply", action="store_true", help="write the new pm_house_multiplier to the params file")
-    q.set_defaults(fn=cmd_margin_check)
 
     a = ap.parse_args(argv)
     if a.cmd == "profile" and a.action == "set" and (a.net_liq is None or a.margin is None):
