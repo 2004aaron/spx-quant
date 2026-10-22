@@ -74,8 +74,7 @@ def classify(curve: dict[str, float | None], params: Params | None = None, asof:
     return Regime(state, bucket, round(slope, 4), shown, "", asof)
 
 
-RULES = ("backwardation", "vol_floor", "vol_ceiling")
-DEFAULT_STAND_DOWN = ("vol_floor", "vol_ceiling")
+STAND_DOWN = ("vol_floor", "vol_ceiling")   # backwardation is a note, not a stand-down (rules pivot, 2026-10-19)
 
 
 def readings(regime: Regime, params: Params | None = None) -> dict[str, str]:
@@ -94,17 +93,8 @@ def readings(regime: Regime, params: Params | None = None) -> dict[str, str]:
     return out
 
 
-def stand_down_rules(params: Params | None = None) -> tuple[str, ...]:
-    p = params or load_params()
-    rules = tuple(getattr(p, "gate", {}).get("stand_down_on", DEFAULT_STAND_DOWN))
-    unknown = [r for r in rules if r not in RULES]
-    if unknown:
-        raise ValueError(f"gate.stand_down_on names unknown rules: {', '.join(unknown)}")
-    return rules
-
-
 def gate(regime: Regime, params: Params | None = None) -> tuple[bool, list[str]]:
-    """Stand down only on the rules listed in gate.stand_down_on.
+    """Stand down on the volatility floor (VIX under 13) or ceiling (28 and up).
 
     Backwardation is reported by advisories() instead: the 2026-10-19 re-run found the
     inverted curve was the best regime for short premium (docs/results/rules-pivot.md).
@@ -112,16 +102,13 @@ def gate(regime: Regime, params: Params | None = None) -> tuple[bool, list[str]]
     p = params or load_params()
     if not regime.known:
         return False, [f"regime could not be identified: {regime.reason}"]
-    active = stand_down_rules(p)
-    reasons = [why for code, why in readings(regime, p).items() if code in active]
+    reasons = [why for code, why in readings(regime, p).items() if code in STAND_DOWN]
     return not reasons, reasons
 
 
 def advisories(regime: Regime, params: Params | None = None) -> list[str]:
-    """Rules that fired but are configured as information only."""
-    p = params or load_params()
+    """Readings shown on the alert without stopping the scan (backwardation)."""
     if not regime.known:
         return []
-    active = stand_down_rules(p)
-    return [f"{why} (information only, not a stand-down rule)" for code, why in readings(regime, p).items()
-            if code not in active]
+    return [f"{why} (information only, not a stand-down rule)" for code, why in readings(regime, params).items()
+            if code not in STAND_DOWN]
