@@ -19,15 +19,20 @@ starts more than 30 minutes after its slot says so in the alert and logs a
 options stop at 10:15 PT, so the 13:25 scan answers NO ADVICE (stale); the mark job
 accepts any board updated within 20 minutes of that day's close, so it still runs.
 
-## Cloud schedule (from October 8, 2026)
+## Cloud schedule (Beta mode from October 29, 2026)
 
-Cloud scheduled tasks run the scans so the laptop does not have to be on:
+Cloud scheduled tasks run everything so no machine has to stay on:
 
 | Task | Time (PT) | Steps |
 | --- | --- | --- |
 | StormGlass 10:30 scan | weekdays 10:30 | clone `main`, load the log, `scan --slot 10:30`, send the outbox through Gmail and record each send, save the log |
-| StormGlass end-of-day scan and mark | weekdays 13:25 | same, with `scan --slot 13:25`, then record decisions from email replies, `mark`, save the log, `kr a1` |
-| StormGlass weekly report | Fridays 13:50 | clone `main`, load the log, `report`, email it (read-only; the log is not changed) |
+| StormGlass end-of-day scan | weekdays 13:25 | same, with `scan --slot 13:25` |
+| StormGlass replies and mark | weekdays 13:52 | load the log, record decisions from email replies, `mark` at the closing quotes, save the log |
+| StormGlass weekly report | Fridays 14:07 | load the log, `report`, email it (read-only; the log is not changed) |
+
+The mark runs as its own task so it values positions at the 13:15 close rather than
+at quotes from a few minutes before it. It refuses to run if today's 13:25 scan is not
+in the log yet, so two tasks never save over each other.
 
 Alerts go out through the task's Gmail connector (channel `gmail`): the scan queues
 the message in the log, `outbox` lists what is queued, and `delivered ID --ref MSG`
@@ -44,15 +49,16 @@ Each run starts in an empty container, so the log lives between runs as the proj
 document `claude/quant-log.sql`: a SQL dump that ends with a sha256 line.
 `deploy/cloud/logdoc.py load` refuses a copy whose checksum does not match, so a
 damaged copy never replaces the log. The profile ($150,000, portfolio margin) is set
-fresh on every run and is never committed (QR-6). The 13:25 run has about 20 minutes
+fresh on every run and is never committed (QR-5). The 13:25 run has about 20 minutes
 of slack: after the 13:15 close the quotes age past the 30-minute limit around 13:45.
 
 The older "StormGlass shadow log" task (2:30 PM PT) keeps running beside these; it
 writes its own documents and does not count toward A-KR1.
 
-## Beta host (from November 16)
+## Linux host (optional)
 
-A small Linux VM (proposal 5.5 prices a Hetzner CX23). Install Python 3.11+, clone the
+The cloud tasks replace the rented host in proposal 4.5: they run unattended, need no
+credentials, and cost nothing. If a host is wanted later: a small Linux VM (proposal 5.5 prices a Hetzner CX23). Install Python 3.11+, clone the
 repo, set the clock to Pacific, then edit and load `deploy/cron/crontab.example`.
 Deploying an update is `git pull`; cron starts a fresh process each slot.
 
