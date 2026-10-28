@@ -11,6 +11,7 @@ from spx_quant.profile import validate
 
 REPLAY = Path(__file__).parent / "data" / "cboe-2026-09-28-close.json.gz"
 EOD = clock.local_to_utc("PT", datetime(2026, 9, 28, 13, 25))    # 10 minutes after the recorded close
+MARK_TIME = clock.local_to_utc("PT", datetime(2026, 9, 28, 13, 35))
 PARAMS = load_params()
 
 

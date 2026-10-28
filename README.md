@@ -55,8 +55,20 @@ fill-cost guard on thin structures. Evidence and the end-to-end comparison: [`do
 Only the current rule set is in the code. The retired rules are in the git history, and the backtest
 scripts and raw data that produced the evidence are on the [`research` branch](https://github.com/2004aaron/spx-quant/tree/research).
 
-Beta (November 16) and RC (December 9) stories ship in later releases, on the schedule
-in the proposal.
+## Beta work on main (from October 19)
+
+With Alpha released, the Beta and RC stories are back on `main` for the Beta window
+(October 30 to November 15). They were built in v0.5 and held back from the Alpha release.
+
+| Story | What it does | Module |
+| --- | --- | --- |
+| US-07 alerts | each scan queues one plain-text message in the log; Gmail (through the scheduled run) or Discord sends it; delivery recorded with retries | `notify.py`, `alert.py` |
+| US-08 append-only log | scan, alert, delivery, mark, feedback and event tables; updates and deletes refused | `store.py` |
+| US-09 daily marks | every open proposal marked at the closing quotes; flags the 50% profit target (the only exit rule); settlement at expiration | `mark.py` |
+| US-10 decisions | accepted, declined, modified N or closed, from the CLI or an email reply | `decisions.py` |
+| US-11, US-12 weekly report | advisor book vs your book, predicted vs realized worst case, failures and anomalies | `report.py` |
+| US-13 remaining buying power (stretch) | sizes against buying power left after open positions | `sizing.py` |
+| Beta and RC KR scripts | B-KR1 to B-KR3, RC-KR1 to RC-KR3, S-KR1 | `kr.py` |
 
 ## Run it
 
@@ -65,7 +77,7 @@ Python 3.11 or newer. No third-party packages, no install step.
 ```bash
 git clone https://github.com/2004aaron/spx-quant.git
 cd spx-quant
-python -m unittest discover -s tests -t . -v        # 139 tests, about 10 seconds
+python -m unittest discover -s tests -t . -v        # 191 tests, about 17 seconds
 
 python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 --max-worst-case 0.05
 python -m spx_quant profile show
@@ -113,7 +125,7 @@ spx_quant/
   synthetic.py     synthetic boards for tests and A-KR3
   clock.py         Eastern/Pacific time and the NYSE calendar without tzdata
 config/params.toml every parameter with a validation tag and a source
-deploy/cloud/      log carrier: SQLite log <-> checksummed SQL dump
+deploy/            cloud log carrier, Beta host crontab
 docs/              build notes, backtest findings, story map, operations, KR results
 tests/             unittest suite; tests/data holds the recorded session
 ```
