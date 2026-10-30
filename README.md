@@ -77,7 +77,7 @@ Python 3.11 or newer. No third-party packages, no install step.
 ```bash
 git clone https://github.com/2004aaron/spx-quant.git
 cd spx-quant
-python -m unittest discover -s tests -t . -v        # 191 tests, about 17 seconds
+python -m unittest discover -s tests -t . -v        # 196 tests, about 17 seconds
 
 python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 --max-worst-case 0.05
 python -m spx_quant profile show
@@ -91,7 +91,8 @@ python -m spx_quant kr a3             # A-KR3: sizing matrix
 ```
 
 Global options go before the command: `--profile PATH`, `--db PATH`, `--params PATH`.
-Each user gets their own profile and database.
+Each user gets their own profile and database; two users can scan at the same time
+(see "Two users at once" in [`docs/operations.md`](docs/operations.md)).
 
 Outside market hours the live feed is stale and `scan` answers NO ADVICE. To see a
 full proposal any time, replay the recorded September 28 close:
@@ -125,7 +126,7 @@ spx_quant/
   synthetic.py     synthetic boards for tests and A-KR3
   clock.py         Eastern/Pacific time and the NYSE calendar without tzdata
 config/params.toml every parameter with a validation tag and a source
-deploy/            cloud log carrier, Beta host crontab
+deploy/            cloud log carrier, two-log comparison, Beta host crontab
 docs/              build notes, backtest findings, story map, operations, KR results
 tests/             unittest suite; tests/data holds the recorded session
 ```

@@ -19,48 +19,83 @@ starts more than 30 minutes after its slot says so in the alert and logs a
 options stop at 10:15 PT, so the 13:25 scan answers NO ADVICE (stale); the mark job
 accepts any board updated within 20 minutes of that day's close, so it still runs.
 
-## Cloud schedule (Beta mode from October 29, 2026)
+## Schedule (Beta, from October 30, 2026)
 
-Cloud scheduled tasks run everything so no machine has to stay on:
+The scans run on GitHub Actions in a private repository, `stormglass-ops`, because the log
+carries the pilot's account size (QR-5). Each run checks out this repository's `main`, loads
+the encrypted logs, does its job and commits the logs back.
 
-| Task | Time (PT) | Steps |
+| Run | Time (PT, weekdays) | Steps |
 | --- | --- | --- |
-| StormGlass 10:30 scan | weekdays 10:30 | clone `main`, load the log, `scan --slot 10:30`, send the outbox through Gmail and record each send, save the log |
-| StormGlass end-of-day scan | weekdays 13:25 | same, with `scan --slot 13:25` |
-| StormGlass replies and mark | weekdays 13:52 | load the log, record decisions from email replies, `mark` at the closing quotes, save the log |
-| StormGlass weekly report | Fridays 14:07 | load the log, `report`, email it (read-only; the log is not changed) |
+| 10:30 slot | 10:30 | `scan --slot 10:30`; the alert is emailed (Gmail SMTP) and the send recorded |
+| 13:25 slot | 13:25 | `scan --slot 13:25` and its email, then decisions from email replies, then `mark` at the closing quotes |
+| weekly report | Fridays after the close | `report`, emailed |
 
-The mark runs as its own task so it values positions at the 13:15 close rather than
-at quotes from a few minutes before it. It refuses to run if today's 13:25 scan is not
-in the log yet, so two tasks never save over each other.
+GitHub starts scheduled runs late, by hours on some days, so an outside cron starts the two
+slot runs on time through `workflow_dispatch`. The GitHub crons stay as late backups: a run
+that starts early waits for its slot, and a slot already logged is skipped.
 
-Alerts go out through the task's Gmail connector (channel `gmail`): the scan queues
-the message in the log, `outbox` lists what is queued, and `delivered ID --ref MSG`
-records the send so B-KR1 can time it. A failed send is recorded with
-`delivered ID --failed ERROR`; after three failures the alert leaves the outbox and a
-`delivery_failed` event goes into the weekly report. No password or webhook is stored.
+A failed send is recorded with its error and retried up to three times; after that a
+`delivery_failed` event goes into the weekly report. The email password is a repository
+secret (a Gmail app password), never a file.
 
 Decisions come back as email replies. Reply to an alert with ACCEPTED, DECLINED,
-MODIFIED <contracts> or (later) CLOSED as the first word; the end-of-day task finds
-the reply and runs `reply ID "<text>" --ref <reply id>`, which never counts the same
-reply twice. `decide` does the same from the command line.
+MODIFIED <contracts> or (later) CLOSED as the first word; the 13:25 run reads replies over
+IMAP and runs `reply ID "<text>" --ref <message id>`, which never counts the same reply
+twice. `decide` does the same from the command line.
 
-Each run starts in an empty container, so the log lives between runs as the project
-document `claude/quant-log.sql`: a SQL dump that ends with a sha256 line.
-`deploy/cloud/logdoc.py load` refuses a copy whose checksum does not match, so a
-damaged copy never replaces the log. The profile ($150,000, portfolio margin) is set
-fresh on every run and is never committed (QR-5). The 13:25 run has about 20 minutes
-of slack: after the 13:15 close the quotes age past the 30-minute limit around 13:45.
+The log moves between runs as a SQL dump that ends with a sha256 line
+(`deploy/cloud/logdoc.py`), encrypted with AES-256. `load` refuses a copy whose checksum
+does not match, so a damaged copy never replaces the log. The profile is set fresh on every
+run from repository secrets and is never committed (QR-5). The 13:25 run has about 20
+minutes of slack: after the 13:15 close the quotes age past the 30-minute limit around 13:45.
 
-The older "StormGlass shadow log" task (2:30 PM PT) keeps running beside these; it
-writes its own documents and does not count toward A-KR1.
+The older "StormGlass shadow log" task (2:30 PM PT) keeps running beside these; it writes
+its own documents and does not count toward any key result.
+
+## Two users at once
+
+Proposal 4.5 runs both pilot users off one copy of the code: each user has their own
+profile, their own log and their own schedule entry. Nothing else is shared except
+`config/params.toml`, which a scan only reads.
+
+```
+same code, same slot
+├─ pilot   profile A ─▶ scan ─▶ log A ─▶ alert to A
+└─ demo    profile B ─▶ scan ─▶ log B
+```
+
+`tests/test_two_users.py` starts two `scan` processes at the same moment on the recorded
+September 28 board, one per user ($150,000 portfolio margin and $250,000 Reg-T), and checks:
+
+- each log holds exactly its own scan and alert, and the alert carries its own profile
+- the same board is sized per account: 1 XSP strangle for one user, 2 for the other
+- each user's outbox addresses only that user
+- alert IDs are counted per log: both logs get the same first ID, and a second scan
+  adds `-2` only in the log it ran in
+
+From October 30 a second, simulated user runs live beside the pilot in every slot run:
+$250,000, Reg-T, no email, with its own encrypted log. Both scans start at the same
+moment. I operate it as a demonstration profile. It is not a pilot user and records no
+decisions.
+
+Each run prints the two logs side by side; to do it by hand, load both dumps with
+`logdoc.py load`, then:
+
+```bash
+python deploy/cloud/side_by_side.py pilot.db demo.db --labels pilot demo
+```
+
+One row per scheduled scan: when each user's scan started, what it answered, and the
+gap between the two start times. Account sizes stay out of the table (QR-5).
 
 ## Linux host (optional)
 
-The cloud tasks replace the rented host in proposal 4.5: they run unattended, need no
-credentials, and cost nothing. If a host is wanted later: a small Linux VM (proposal 5.5 prices a Hetzner CX23). Install Python 3.11+, clone the
-repo, set the clock to Pacific, then edit and load `deploy/cron/crontab.example`.
-Deploying an update is `git pull`; cron starts a fresh process each slot.
+The GitHub runner replaces the rented host in proposal 4.5: it runs unattended and costs
+nothing. If a host is wanted later: a small Linux VM (proposal 5.5 prices a Hetzner CX23).
+Install Python 3.11+, clone the repo, set the clock to Pacific, then edit and load
+`deploy/cron/crontab.example`. Deploying an update is `git pull`; cron starts a fresh
+process each slot.
 
 ## Notification channels
 
