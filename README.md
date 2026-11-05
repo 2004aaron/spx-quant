@@ -42,7 +42,8 @@ has a test; the map is in [`docs/story-map.md`](docs/story-map.md).
 | A-KR2 proposals that fail an entry check | 0 of 13; 8 of 8 planted bad rows caught | A | [`docs/results/a-kr2.md`](docs/results/a-kr2.md) |
 | A-KR3 sizing matrix | 24 cases, 0 violations | A | [`docs/results/a-kr3.md`](docs/results/a-kr3.md) |
 
-Bands come from the grading table in the final proposal. A-KR1 is missing October 5 to 7,
+Bands come from the grading table in the final proposal. The current OKRs and grading
+table, with the revised Beta, RC and Stretch KRs, are in [`docs/okrs.md`](docs/okrs.md). A-KR1 is missing October 5 to 7,
 before the cloud schedule started. October 16 counts on the end-of-day scan from the second log;
 [`docs/results/a-kr1.md`](docs/results/a-kr1.md) says how the two logs were combined.
 
