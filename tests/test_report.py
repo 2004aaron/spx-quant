@@ -96,7 +96,8 @@ class RcKrTest(unittest.TestCase):
     def test_rc2_compares_engine_marks_with_broker_marks(self):
         with tempfile.TemporaryDirectory() as d:
             f = Path(d) / "marks.csv"
-            f.write_text(f"alert_id,market_date,broker_pnl\n{self.aid},2026-09-28,-20\n")
+            f.write_text(f"alert_id,market_date,put_mark,broker_pnl\n{self.aid},2026-09-28,1.2,-20\n"
+                         f"{self.aid},2026-09-28,,\n")    # a blank row from the marks sheet is skipped
             text, ok = kr.rc2(self.conn, PARAMS, date(2026, 9, 28), date(2026, 9, 28), str(f))
         self.assertIn("mean error 2.4% over 1 comparisons", text)
         self.assertTrue(ok)

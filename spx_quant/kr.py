@@ -388,7 +388,7 @@ def rc2(conn, params: Params, start: date, end: date, broker: str | None = None)
     with open(broker, newline="", encoding="utf-8") as f:
         for r in csv.DictReader(f):
             d = r["market_date"].strip()
-            if not (start.isoformat() <= d <= end.isoformat()):
+            if not (r.get("broker_pnl") or "").strip() or not (start.isoformat() <= d <= end.isoformat()):
                 continue
             a = store.get_alert(conn, r["alert_id"].strip())
             m = store.rows(conn, "SELECT pnl FROM mark WHERE alert_id = ? AND market_date = ? ORDER BY id DESC LIMIT 1",
