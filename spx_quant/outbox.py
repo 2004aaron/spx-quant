@@ -36,7 +36,7 @@ def pending(conn, params) -> list[dict]:
             continue
         a = store.get_alert(conn, r["alert_id"])
         out.append({"alert_id": a["alert_id"], "to": (a["profile"] or {}).get("email_to", ""),
-                    "subject": a["subject"], "body": a["text"], "attempts_so_far": failed})
+                    "subject": a["subject"], "body": a["text"], "html": a.get("html"), "attempts_so_far": failed})
     return out
 
 

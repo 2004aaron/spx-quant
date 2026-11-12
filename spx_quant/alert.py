@@ -12,7 +12,7 @@ from datetime import datetime
 
 from . import clock
 from .analytics import assumptions_text
-from .engine import Candidate, ScanResult
+from .engine import BOOK_NOTE, Candidate, ScanResult
 
 KIND_TITLE = {"proposal": "PROPOSAL", "stand_down": "STAND DOWN", "no_advice": "NO ADVICE"}
 CURVE_ORDER = (("vix9d", "VIX9D"), ("vix", "VIX"), ("vix3m", "VIX3M"), ("vix6m", "VIX6M"))
@@ -73,6 +73,70 @@ def _candidate_summary(i: int, c: Candidate) -> str:
             f"{r.ann_return_bp:.1f}%/yr on BP, EV {_money(r.ev)}, POP {r.pop:.0%}, worst case {_money(r.worst_case)}")
 
 
+def sizing_rows(c: Candidate, prof) -> list[tuple[str, str]]:
+    """Label and value for each sizing line of a proposal; the text and HTML bodies share them."""
+    p, s = c.position, c.sized
+    lo, hi = p.credit_range
+    return [
+        ("Credit", f"{_money(p.credit * s.contracts)} total ({s.contracts} x ${p.credit:,.2f} per lot at mid; "
+                   f"natural ${lo:,.2f}, far ${hi:,.2f})"),
+        ("Buying power", f"${s.bp_total:,.2f} of ${s.cap:,.2f} cap ({s.contracts} x ${s.bp_per_lot:,.2f}, "
+                         f"{prof.margin_type.replace('_', '-')} margin)"),
+        ("Delta:theta", f"{s.dt_text()} within the 1:{s.dt_limit:g} limit (delta {s.delta_per_lot:+.2f} SPY deltas, "
+                        f"theta ${s.theta_per_lot:,.2f}/day per lot)"
+                        + (f"; profile limit 1:{prof.delta_theta_limit:g} relaxed for a {p.label()} in an uptrend"
+                           if s.dt_limit != prof.delta_theta_limit else "")),
+        ("Worst-case limit", f"${s.worst_total:,.2f} of ${s.worst_limit:,.2f} ({prof.max_worst_case_pct:.0%} of net liq; "
+                             f"{s.contracts} x ${s.worst_per_lot:,.2f} stress loss per lot)"),
+    ]
+
+
+def sizing_notes(s) -> list[str]:
+    """Why the size was cut. Says nothing about the other positions held (those stay in the log)."""
+    if s.bp_contracts <= s.contracts:
+        return []
+    lots = f"from {s.bp_contracts} to {s.contracts} lot{'' if s.contracts == 1 else 's'}"
+    if s.limited_by == BOOK_NOTE:
+        return [f"Sized down {lots} to fit your remaining buying power."]
+    if s.limited_by == "worst case":
+        return [f"Sized down {lots} so the worst case stays inside the limit; buying power alone would allow {s.bp_contracts}."]
+    return []
+
+
+def risk_rows(c: Candidate, prof) -> list[tuple[str, str]]:
+    r = c.risk
+    return [
+        ("Probability of profit", f"{r.pop:.1%}"),
+        ("Expected value", _money(r.ev)),
+        ("Expected annual return on buying power", f"{r.ann_return_bp:.1f}%"),
+        (f"Worst case (stress: index {r.assumptions['worst_case_move']:+.0%}, volatility "
+         f"+{r.assumptions['worst_case_vol_points']:g} points)",
+         f"{_money(r.worst_case)} = {abs(r.worst_case) / prof.net_liq:.0%} of net liquidation"),
+        ("Average of the worst 5% (CVaR 5%)", _money(r.cvar5)),
+        ("Average of the worst 1% (CVaR 1%)", _money(r.cvar1)),
+        ("Max profit", _money(r.max_profit)),
+        ("Max loss", _money(-r.max_loss) if r.max_loss is not None else "unlimited (naked short option)"),
+        ("Breakevens at expiration", " / ".join(f"{b:,.2f}" for b in r.breakevens) or "n/a"),
+        ("Stress, instant index move", " | ".join(f"{mv:+.0%} {_money(v, True)}" for mv, v in r.stress)),
+        ("Implied crash rate", (f"{r.implied_crash_per_year:g} per year" if r.implied_crash_per_year is not None
+                                else "over 50 per year")
+         + " (the crash frequency this premium pays for, before any volatility risk premium)"),
+    ]
+
+
+def ranked_first(res: ScanResult) -> str:
+    p, r = res.best.position, res.best.risk
+    if p.strategy in res.preferred and len(res.ranked) > 1:
+        return (f"Ranked first because the trend is up and the {p.label()} is preferred in uptrends "
+                f"({r.ann_return_bp:.1f}% expected annual return on buying power).")
+    why = f"Ranked first because it has the highest expected annual return on buying power ({r.ann_return_bp:.1f}%)"
+    return why + ("." if len(res.ranked) == 1 else f" of {len(res.ranked)} candidates that fit.")
+
+
+def email_notes(res: ScanResult) -> list[str]:
+    return [n for n in res.notes if not n.startswith(BOOK_NOTE)]
+
+
 def _header(res: ScanResult, title: str, aid: str, created_ts: datetime) -> list[str]:
     lines = [f"STORMGLASS | {title} | {aid}", f"Output: {clock.fmt(created_ts)}"]
     if res.data_ts is not None:
@@ -118,58 +182,17 @@ def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
         c = res.best
         p, s, r = c.position, c.sized, c.risk
         prof = res.profile
-        lo, hi = p.credit_range
         subject = f"[StormGlass {aid}] PROPOSAL: {p.label()} {p.ticker.lstrip('_')} {p.exp:%m/%d} x{s.contracts}"
         lines += ["", f"PROPOSAL: {p.label()} on {p.ticker.lstrip('_')}, expires {p.exp.isoformat()} ({p.dte} DTE)"]
         lines += [_leg_line(c, l) for l in sorted(p.legs, key=lambda l: (l.right, l.strike))]
-        lines += [
-            f"  Credit: {_money(p.credit * s.contracts)} total ({s.contracts} x ${p.credit:,.2f} per lot at mid; "
-            f"natural ${lo:,.2f}, far ${hi:,.2f})",
-            f"  Buying power: ${s.bp_total:,.2f} of ${s.cap:,.2f} cap ({s.contracts} x ${s.bp_per_lot:,.2f}, "
-            f"{prof.margin_type.replace('_', '-')} margin)",
-            f"  Delta:theta: {s.dt_text()} within the 1:{s.dt_limit:g} limit (delta {s.delta_per_lot:+.2f} SPY deltas, "
-            f"theta ${s.theta_per_lot:,.2f}/day per lot)"
-            + (f"; profile limit 1:{prof.delta_theta_limit:g} relaxed for a {p.label()} in an uptrend"
-               if s.dt_limit != prof.delta_theta_limit else ""),
-            f"  Worst-case limit: ${s.worst_total:,.2f} of ${s.worst_limit:,.2f} ({prof.max_worst_case_pct:.0%} of net liq; "
-            f"{s.contracts} x ${s.worst_per_lot:,.2f} stress loss per lot)",
-        ]
-        if s.limited_by == "remaining buying power" and s.bp_contracts > s.contracts:
-            lines.append(f"  Sized down from {s.bp_contracts} to {s.contracts} lot{'' if s.contracts == 1 else 's'} for remaining buying power: "
-                         f"${s.available:,.2f} available after open positions.")
-        if s.limited_by == "worst case" and s.bp_contracts > s.contracts:
-            lines.append(f"  Sized down from {s.bp_contracts} to {s.contracts} lot{'' if s.contracts == 1 else 's'} so the worst case stays inside the limit; "
-                         f"buying power alone would allow {s.bp_contracts}.")
-        lines += [
-            "",
-            f"RISK (model estimates for {'1 lot' if s.contracts == 1 else f'all {s.contracts} lots'})",
-            f"  Probability of profit: {r.pop:.1%}",
-            f"  Expected value: {_money(r.ev)}",
-            f"  Expected annual return on buying power: {r.ann_return_bp:.1f}%",
-            f"  Worst case (stress: index {r.assumptions['worst_case_move']:+.0%}, volatility "
-            f"+{r.assumptions['worst_case_vol_points']:g} points): {_money(r.worst_case)}"
-            f" = {abs(r.worst_case) / prof.net_liq:.0%} of net liquidation",
-            f"  Average of the worst 5% (CVaR 5%): {_money(r.cvar5)}",
-            f"  Average of the worst 1% (CVaR 1%): {_money(r.cvar1)}",
-            f"  Max profit: {_money(r.max_profit)}",
-            f"  Max loss: {_money(-r.max_loss) if r.max_loss is not None else 'unlimited (naked short option)'}",
-            f"  Breakevens at expiration: {' / '.join(f'{b:,.2f}' for b in r.breakevens) or 'n/a'}",
-            "  Stress, instant index move: " + " | ".join(f"{mv:+.0%} {_money(v, True)}" for mv, v in r.stress),
-            "  Implied crash rate: " + (f"{r.implied_crash_per_year:g} per year"
-                                        if r.implied_crash_per_year is not None else "over 50 per year")
-            + " (the crash frequency this premium pays for, before any volatility risk premium)",
-            "",
-            "ASSUMPTIONS",
-        ]
+        lines += [f"  {k}: {v}" for k, v in sizing_rows(c, prof)] + [f"  {n}" for n in sizing_notes(s)]
+        lines += ["", f"RISK (model estimates for {'1 lot' if s.contracts == 1 else f'all {s.contracts} lots'})"]
+        lines += [f"  {k}: {v}" for k, v in risk_rows(c, prof)]
+        lines += ["", "ASSUMPTIONS"]
         lines += textwrap.wrap(assumptions_text(r.assumptions), 96, initial_indent="  ", subsequent_indent="  ")
         lines += ["", "RANKING (expected annual return on buying power; best first)"]
         lines += [_candidate_summary(i, x) for i, x in enumerate(res.ranked, 1)]
-        if p.strategy in res.preferred and len(res.ranked) > 1:
-            lines.append(f"  Ranked first because the trend is up and the {p.label()} is preferred in uptrends "
-                         f"({r.ann_return_bp:.1f}% expected annual return on buying power).")
-        else:
-            why = f"  Ranked first because it has the highest expected annual return on buying power ({r.ann_return_bp:.1f}%)"
-            lines.append(why + ("." if len(res.ranked) == 1 else f" of {len(res.ranked)} candidates that fit."))
+        lines.append(f"  {ranked_first(res)}")
         lines += ["", REPLY_LINE]
     elif res.kind == "stand_down":
         subject = f"[StormGlass {aid}] STAND DOWN: {res.reasons[0] if res.reasons else 'no trade'}"
@@ -183,8 +206,8 @@ def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
         for c in res.rejected:
             p = c.position
             lines.append(f"  - {p.label()} {p.ticker.lstrip('_')} {p.exp:%m/%d} {p.legs_text()}: {'; '.join(c.reasons)}")
-    if res.notes:
-        lines += ["", "NOTES"] + [f"  - {n}" for n in res.notes]
+    if email_notes(res):
+        lines += ["", "NOTES"] + [f"  - {n}" for n in email_notes(res)]
     lines += ["", res.params_summary,
               "Model estimates with tagged assumptions, not investment advice. The engine never places orders."]
     return subject[:200], "\n".join(lines)

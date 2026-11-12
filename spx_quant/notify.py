@@ -32,6 +32,7 @@ class ChannelError(RuntimeError):
 
 class EmailChannel:
     name = "email"
+    html = True   # takes an HTML body next to the plain text
 
     def __init__(self, to: str, env=os.environ):
         self.to = to
@@ -44,10 +45,12 @@ class EmailChannel:
         self.port = int(env.get("SPX_QUANT_SMTP_PORT", "587"))
         self.sender = env.get("SPX_QUANT_SMTP_FROM", self.user)
 
-    def send(self, subject: str, body: str) -> None:
+    def send(self, subject: str, body: str, html: str | None = None) -> None:
         msg = EmailMessage()
         msg["Subject"], msg["From"], msg["To"] = subject, self.sender, self.to
         msg.set_content(body)
+        if html:
+            msg.add_alternative(html, subtype="html")
         ctx = ssl.create_default_context()
         if self.port == 465:
             with smtplib.SMTP_SSL(self.host, self.port, context=ctx, timeout=30) as s:
@@ -121,11 +124,12 @@ def deliver(conn, alert: dict, finished_ts: datetime, profile: Profile, params, 
         return "suppressed_repeat"
 
     attempts = int(n.get("max_attempts", 3))
+    message = (subject, body, alert["html"]) if alert.get("html") and getattr(channel, "html", False) else (subject, body)
     last_err = ""
     for i in range(1, attempts + 1):
         sent = now()
         try:
-            channel.send(subject, body)
+            channel.send(*message)
         except Exception as e:
             last_err = f"{type(e).__name__}: {e}"
             store.insert(conn, "delivery", alert_id=aid, channel=channel.name, attempt=i, sent_ts=sent, status="failed", error=last_err)

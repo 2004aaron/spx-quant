@@ -111,6 +111,19 @@ Credentials are environment variables, never files in the repo (QR-5).
 flow diagram shows email as the default and Discord as the alternative; confirm with
 the mentor by October 9 (US-07).
 
+## Email layout (changed 2026-11-12)
+
+Every alert email carries two bodies. The plain text is the logged record (`alert.text`, QR-6)
+and the fallback for clients that show no HTML. The HTML (`alert.html`, built by `htmlmail.py`)
+shows the same facts as a card: headline, four key numbers (credit, chance of profit, worst
+case, buying power), the order table, then sizing, risk and market detail. Styles are inline
+because mail clients drop `<style>` blocks. If the HTML fails to build, the scan still logs and
+sends the plain text, and an `html_failed` event records why.
+
+A proposal email says nothing about the other positions you hold. When held positions cut the
+size, the email says only "Sized down from 3 to 2 lots to fit your remaining buying power."
+The list of held positions and the dollars left (US-13-AC1) stays in the log: `scan.detail.notes`.
+
 ## Repeat policy: short "no change" messages (decided 2026-09-28)
 
 US-07-AC2 and the diagram (Part 4 screen 9, Part 5 notes) say an unchanged scan sends
