@@ -47,6 +47,7 @@ IDs follow the final proposal (September 27, 2026). Run everything with
 | QR-1 no advice from quotes older than 30 minutes | `test_feed.ProbeTest.test_fresh_cdn_timestamp_does_not_hide_old_quotes`, `test_feed.ReplayTest.test_replay_at_recording_time_is_stale` |
 | QR-5 no credentials or balances in version control | `.gitignore` covers profiles, databases, `.env`; credentials are environment variables |
 | QR-6 plain-text alerts | `test_scan.ProposalTest.test_b_kr3_quotes_and_both_timestamps_in_the_message` |
+| HTML email body: same quotes and timestamps, inline styles, no other positions listed | `test_htmlmail` (10 tests) |
 | A-KR2 checks catch planted rows | `test_kr.AlphaKRTest.test_a_kr2_real_proposal_passes_and_every_planted_row_is_caught` |
 | A-KR3 24 cases, 0 violations | `test_kr_a3.AKR3Matrix` (24 tests); table in `docs/results/a-kr3.md` |
 | B-KR1 to B-KR3 scripts | `test_kr.BetaKRTest`, `test_notify.DeliveryTest.test_no_change_note_for_a_proposal_keeps_the_legs_and_quotes` |

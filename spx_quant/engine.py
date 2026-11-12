@@ -18,6 +18,9 @@ from .regime import STAND_DOWN, Regime, advisories, classify, gate, readings
 from .strategies import BUILDERS, Position, build
 
 
+BOOK_NOTE = "remaining buying power"   # opens the note that lists held positions; logged, left out of emails
+
+
 def usd(x: float) -> str:
     return f"{'-' if x < 0 else ''}${abs(x):,.0f}"
 
@@ -137,7 +140,7 @@ def run_scan(source, profile: Profile, params: Params, now: datetime | None = No
     available = None
     if held:
         available = round(profile.net_liq - sum(h.bp for h in held), 2)
-        res.notes.append(f"remaining buying power {sizing.usd(max(available, 0))} of {sizing.usd(profile.net_liq)} net liq "
+        res.notes.append(f"{BOOK_NOTE} {sizing.usd(max(available, 0))} of {sizing.usd(profile.net_liq)} net liq "
                          f"after {len(held)} open position{'' if len(held) == 1 else 's'}: "
                          + ", ".join(f"{h.alert_id} x{h.contracts} ({sizing.usd(h.bp)})" for h in held))
     day = clock.market_date(now)

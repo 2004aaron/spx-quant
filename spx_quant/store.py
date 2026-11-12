@@ -23,7 +23,7 @@ SCHEMA = {
                 market_date TEXT, kind TEXT NOT NULL, outcome TEXT, ticker TEXT, strategy TEXT, regime TEXT,
                 legs TEXT, contracts INTEGER, credit REAL, credit_per_lot REAL, bp_per_lot REAL, bp_total REAL,
                 delta_per_lot REAL, theta_per_lot REAL, risk TEXT, reasons TEXT, codes TEXT, quotes TEXT,
-                profile TEXT, candidates TEXT, fingerprint TEXT, repeat_of TEXT, subject TEXT, text TEXT""",
+                profile TEXT, candidates TEXT, fingerprint TEXT, repeat_of TEXT, subject TEXT, text TEXT, html TEXT""",
     "delivery": """alert_id TEXT NOT NULL, channel TEXT, attempt INTEGER, sent_ts TEXT, delivered_ts TEXT,
                    status TEXT NOT NULL, error TEXT, ref TEXT""",
     "mark": """alert_id TEXT NOT NULL, market_date TEXT NOT NULL, ts TEXT, dte INTEGER, spot REAL, mid REAL,

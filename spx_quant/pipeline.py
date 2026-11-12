@@ -10,7 +10,7 @@ import traceback
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 
-from . import clock, decisions, notify, store
+from . import clock, decisions, htmlmail, notify, store
 from .data import cboe
 from .alert import alert_id, fingerprint, render, render_unchanged
 from .engine import ScanResult, run_scan
@@ -64,12 +64,13 @@ def leg_quotes(conn, res: ScanResult, now: datetime, source=None, params: Params
 
 
 def alert_row(res: ScanResult, aid: str, slot: str, slot_ts: datetime, created: datetime,
-              fp: str, subject: str, text: str) -> dict:
+              fp: str, subject: str, text: str, html: str | None = None) -> dict:
     row = dict(alert_id=aid, slot=slot, slot_ts=slot_ts, created_ts=created, data_ts=res.data_ts,
                market_date=clock.market_date(created), kind=res.kind, outcome=res.outcome, ticker=res.ticker,
                regime=res.regime.as_dict() if res.regime else None, reasons=res.reasons, codes=res.codes,
                quotes=res.quotes(), profile=res.profile.__dict__ if res.profile else None,
-               candidates=[c.as_dict() for c in res.ranked + res.rejected], fingerprint=fp, subject=subject, text=text)
+               candidates=[c.as_dict() for c in res.ranked + res.rejected], fingerprint=fp, subject=subject, text=text,
+               html=html)
     if res.best:
         c = res.best
         p, s = c.position, c.sized
@@ -108,11 +109,14 @@ def scan(conn, source, profile: Profile, params: Params, slot: str | None = None
     aid = store.unique_alert_id(conn, alert_id(res, clock.market_date(started)))
     prev = store.last_delivered(conn) if send else None
     repeat = prev is not None and prev["fingerprint"] == fp
-    if repeat and params.notify.get("repeat_policy", "brief") == "brief":
-        subject, text = render_unchanged(res, aid, created, prev)
-    else:
-        subject, text = render(res, aid, created)
-    row = alert_row(res, aid, label, slot_ts, created, fp, subject, text)
+    brief = repeat and params.notify.get("repeat_policy", "brief") == "brief"
+    subject, text = render_unchanged(res, aid, created, prev) if brief else render(res, aid, created)
+    try:
+        html = htmlmail.alert_html(res, aid, created, prev if brief else None)
+    except Exception as e:   # the plain text is the record; a layout bug must not cost the scan
+        html = None
+        store.event(conn, created, "html_failed", f"{type(e).__name__}: {e}", aid)
+    row = alert_row(res, aid, label, slot_ts, created, fp, subject, text, html)
     row["repeat_of"] = prev["alert_id"] if repeat else None
     store.insert(conn, "alert", **row)
     finished = source.now()
