@@ -15,6 +15,8 @@
   reply ID TEXT [--ref R]                       record a decision from an email reply's text
   show ID                                       one alert with its deliveries, decisions and marks
   report [--end YYYY-MM-DD] [--days 7] [--out FILE]   weekly report (US-11, US-12)
+  digest monday [--date D] [--book taken|paper] [--out FILE] [--html FILE] [--send]
+                                                Monday outlook email: open positions by expiry and by risk
 """
 from __future__ import annotations
 
@@ -25,7 +27,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from . import __version__, clock, decisions, kr, mark, notify, outbox, pipeline, report, store
+from . import __version__, clock, decisions, digest, kr, mark, notify, outbox, pipeline, report, store
 from . import profile as prof
 from .data import cboe
 from .params import DEFAULT_PATH as PARAMS_PATH, load_params
@@ -217,6 +219,23 @@ def cmd_report(a, params) -> int:
     return 0
 
 
+def cmd_digest(a, params) -> int:
+    conn = store.connect(a.db)
+    asof = date.fromisoformat(a.date) if a.date else clock.market_date(clock.now_utc())
+    message = digest.build(a.which, conn, asof, a.book)
+    for path, body in ((a.out, message[1]), (a.html, message[2])):
+        if path:
+            Path(path).write_text(body, encoding="utf-8")
+            print(f"wrote {path}")
+    if a.send:
+        status = digest.send(conn, _profile(a), params, a.which, asof, message)
+        print(f"{message[0]}\n{a.which} digest for {asof.isoformat()}: {status.replace('_', ' ')}")
+        return 0 if status in ("sent", "already_sent") else 1
+    if not (a.out or a.html):
+        print(message[0] + "\n\n" + message[1], end="")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="spx_quant", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--version", action="version", version=f"spx-quant {__version__}")
@@ -305,6 +324,16 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("--days", type=int, default=7)
     q.add_argument("--out")
     q.set_defaults(fn=cmd_report)
+
+    q = sub.add_parser("digest")
+    q.add_argument("which", choices=digest.KINDS)
+    q.add_argument("--date", help="digest date, YYYY-MM-DD (default: today's market date)")
+    q.add_argument("--book", choices=digest.BOOKS, default="taken",
+                   help="taken: what you accepted or modified; paper: every proposal at full size")
+    q.add_argument("--out", help="write the plain-text body here")
+    q.add_argument("--html", help="write the HTML body here")
+    q.add_argument("--send", action="store_true", help="email it on the profile's email channel, once per date")
+    q.set_defaults(fn=cmd_digest)
 
     a = ap.parse_args(argv)
     if a.cmd == "profile" and a.action == "set" and (a.net_liq is None or a.margin is None):

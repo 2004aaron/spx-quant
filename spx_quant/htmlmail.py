@@ -63,10 +63,11 @@ def tiles(items: list[tuple[str, object, str]]) -> Raw:
                f'style="border-collapse:collapse;margin:16px 0 0 0"><tr>{cells}</tr></table>')
 
 
-def table(head: list[str], rows: list[list], right: tuple[int, ...] = (), foot: list | None = None) -> Raw:
+def table(head: list[str], rows: list[list], right: tuple[int, ...] = (), foot: list | None = None, pad: int = 8) -> Raw:
+    """`pad` is the space left and right of each cell; a table with many number columns takes less to fit a phone."""
     def cell(tag, i, c, extra=""):
         align = "right" if i in right else "left"
-        return f'<{tag} align="{align}" style="padding:7px 8px;{extra}">{e(c)}</{tag}>'
+        return f'<{tag} align="{align}" style="padding:7px {pad}px;{extra}">{e(c)}</{tag}>'
     out = [f'<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;color:{INK}">',
            "<tr>" + "".join(cell("th", i, h, f"{CAPS};font-size:10px;border-bottom:2px solid {LINE}")
                             for i, h in enumerate(head)) + "</tr>"]
