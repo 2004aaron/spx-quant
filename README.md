@@ -68,6 +68,7 @@ With Alpha released, the Beta and RC stories are back on `main` for the Beta win
 | US-09 daily marks | every open proposal marked at the closing quotes; flags the 50% profit target (the only exit rule); settlement at expiration | `mark.py` |
 | US-10 decisions | accepted, declined, modified N or closed, from the CLI or an email reply | `decisions.py` |
 | US-11, US-12 weekly report | advisor book vs your book, predicted vs realized worst case, failures and anomalies | `report.py` |
+| Monday outlook email (issue #63) | open positions on Monday morning: the 10 closest to expiry and the 10 with the largest stated worst case, for the book you took or the paper book | `digest.py` |
 | US-13 remaining buying power (stretch) | sizes against buying power left after open positions | `sizing.py` |
 | Beta and RC KR scripts | B-KR1 to B-KR3, RC-KR1 to RC-KR3, S-KR1 | `kr.py` |
 
@@ -78,7 +79,7 @@ Python 3.11 or newer. No third-party packages, no install step.
 ```bash
 git clone https://github.com/2004aaron/spx-quant.git
 cd spx-quant
-python -m unittest discover -s tests -t . -v        # 196 tests, about 17 seconds
+python -m unittest discover -s tests -t . -v        # 220 tests, about 17 seconds
 
 python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 --max-worst-case 0.05
 python -m spx_quant profile show
@@ -122,6 +123,7 @@ spx_quant/
   engine.py        one scan, pure: returns a ScanResult
   alert.py         alert id and plain-text output                 US-03 to US-06, QR-6
   htmlmail.py      HTML body of each email (card layout)          US-07
+  digest.py        Monday outlook email of open positions         issue #63
   store.py         append-only SQLite scan log                    A-KR1, A-KR2
   pipeline.py      scan -> log
   kr.py            Alpha key-result checks                        section 6
