@@ -48,6 +48,7 @@ IDs follow the final proposal (September 27, 2026). Run everything with
 | QR-5 no credentials or balances in version control | `.gitignore` covers profiles, databases, `.env`; credentials are environment variables |
 | QR-6 plain-text alerts | `test_scan.ProposalTest.test_b_kr3_quotes_and_both_timestamps_in_the_message` |
 | HTML email body: same quotes and timestamps, inline styles, no other positions listed | `test_htmlmail` (10 tests) |
+| Settings site: invite-only email-code sign-in, same validation as the CLI, email from the token only | `test_cloud` (12 tests) |
 | Monday outlook email (issue #63): taken and paper books, top 10 by expiry and by stated worst case, one send per date | `test_digest` (14 tests) |
 | A-KR2 checks catch planted rows | `test_kr.AlphaKRTest.test_a_kr2_real_proposal_passes_and_every_planted_row_is_caught` |
 | A-KR3 24 cases, 0 violations | `test_kr_a3.AKR3Matrix` (24 tests); table in `docs/results/a-kr3.md` |

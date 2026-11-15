@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  StormGlass settings site. Email-code sign-in (Cognito custom auth, invite-only), one Lambda
+  that serves the page and the profile API behind an HTTP API, one DynamoDB row per user.
+
+Parameters:
+  SmtpParam:
+    Type: String
+    Default: /stormglass/smtp
+    Description: SSM path holding the Gmail SMTP user and app password (SecureString)
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures: [arm64]
+    Timeout: 15
+    MemorySize: 256
+    CodeUri: app/
+
+Resources:
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: stormglass-users
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: email, AttributeType: S}]
+      KeySchema: [{AttributeName: email, KeyType: HASH}]
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+
+  AuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: auth.handler
+      Environment:
+        Variables: {SMTP_PARAM: !Ref SmtpParam}
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameters
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SmtpParam}/*
+
+  AuthPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt AuthFunction.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: stormglass-users
+      UsernameAttributes: [email]
+      AdminCreateUserConfig: {AllowAdminCreateUserOnly: true}
+      AccountRecoverySetting:
+        RecoveryMechanisms: [{Name: admin_only, Priority: 1}]
+      LambdaConfig:
+        DefineAuthChallenge: !GetAtt AuthFunction.Arn
+        CreateAuthChallenge: !GetAtt AuthFunction.Arn
+        VerifyAuthChallengeResponse: !GetAtt AuthFunction.Arn
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: stormglass-site
+      GenerateSecret: false
+      ExplicitAuthFlows: [ALLOW_CUSTOM_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      PreventUserExistenceErrors: ENABLED
+      AuthSessionValidity: 10
+      IdTokenValidity: 60
+      AccessTokenValidity: 60
+      TokenValidityUnits: {IdToken: minutes, AccessToken: minutes}
+
+  SiteApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Auth:
+        Authorizers:
+          Cognito:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
+              audience: [!Ref UserPoolClient]
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: api.handler
+      Environment:
+        Variables:
+          USERS_TABLE: !Ref UsersTable
+          CLIENT_ID: !Ref UserPoolClient
+      Policies:
+        - DynamoDBCrudPolicy: {TableName: !Ref UsersTable}
+      Events:
+        Page:
+          Type: HttpApi
+          Properties: {ApiId: !Ref SiteApi, Method: GET, Path: /}
+        GetProfile:
+          Type: HttpApi
+          Properties: {ApiId: !Ref SiteApi, Method: GET, Path: /api/profile, Auth: {Authorizer: Cognito}}
+        PutProfile:
+          Type: HttpApi
+          Properties: {ApiId: !Ref SiteApi, Method: PUT, Path: /api/profile, Auth: {Authorizer: Cognito}}
+
+Outputs:
+  SiteUrl:
+    Value: !Sub https://${SiteApi}.execute-api.${AWS::Region}.amazonaws.com/
+  UserPoolId:
+    Value: !Ref UserPool
+  ClientId:
+    Value: !Ref UserPoolClient
+  UsersTableName:
+    Value: !Ref UsersTable

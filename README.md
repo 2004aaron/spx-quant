@@ -123,6 +123,7 @@ spx_quant/
   engine.py        one scan, pure: returns a ScanResult
   alert.py         alert id and plain-text output                 US-03 to US-06, QR-6
   htmlmail.py      HTML body of each email (card layout)          US-07
+  cloud/           settings site on AWS: email-code sign-in, profile API and page (docs/operations.md)
   digest.py        Monday outlook email of open positions         issue #63
   store.py         append-only SQLite scan log                    A-KR1, A-KR2
   pipeline.py      scan -> log
