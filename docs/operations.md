@@ -30,6 +30,7 @@ the encrypted logs, does its job and commits the logs back.
 | 10:30 slot | 10:30 | `scan --slot 10:30`; the alert is emailed (Gmail SMTP) and the send recorded |
 | 13:25 slot | 13:25 | `scan --slot 13:25` and its email, then decisions from email replies, then `mark` at the closing quotes |
 | weekly report | Fridays after the close | `report`, emailed |
+| Monday outlook | Mondays, about 05:30 | `digest monday --book paper --send` |
 
 GitHub starts scheduled runs late, by hours on some days, so an outside cron starts the two
 slot runs on time through `workflow_dispatch`. The GitHub crons stay as late backups: a run
@@ -38,6 +39,22 @@ that starts early waits for its slot, and a slot already logged is skipped.
 A failed send is recorded with its error and retried up to three times; after that a
 `delivery_failed` event goes into the weekly report. The email password is a repository
 secret (a Gmail app password), never a file.
+
+The Monday outlook is one email of the open positions: four totals, the 10 positions closest
+to expiry and the 10 with the largest stated worst case (the stress-test loss printed in each
+proposal), with buying power next to it. It reads one of two books. A book is a set of
+positions followed from entry to exit: `--book taken` holds the proposals you accepted or
+modified, at the lots you took, until you reply CLOSED or they expire; `--book paper` holds
+every proposal at full size until the first daily mark that flags the profit target or
+settles. The pilot gets the paper book for now. `--send` writes a `digest_monday` event with
+the date, so a second run that day sends nothing; a send that fails three times is a
+`delivery_failed` event in the weekly report. The GitHub cron that starts it can be hours
+late; a Temporal schedule replaces it later (issue #63, item 8).
+
+```bash
+python -m spx_quant digest monday --book paper                 # print today's outlook
+python -m spx_quant digest monday --date 2026-11-16 --html outlook.html --out outlook.txt
+```
 
 Decisions come back as email replies. Reply to an alert with ACCEPTED, DECLINED,
 MODIFIED <contracts> or (later) CLOSED as the first word; the 13:25 run reads replies over
