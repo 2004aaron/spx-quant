@@ -141,6 +141,27 @@ A proposal email says nothing about the other positions you hold. When held posi
 size, the email says only "Sized down from 3 to 2 lots to fit your remaining buying power."
 The list of held positions and the dollars left (US-13-AC1) stays in the log: `scan.detail.notes`.
 
+## Settings site (added 2026-11-15)
+
+Account settings live on a web page instead of a file. `cloud/` holds it:
+
+- `cloud/template.yaml` (AWS SAM, a CloudFormation dialect for serverless apps): a Cognito user pool, one
+  Lambda serving the page and the profile API through an HTTP API, and a DynamoDB table `stormglass-users`
+  with one row per email.
+- Sign-in is an emailed 6-digit code (Cognito custom auth, `cloud/app/auth.py`). No passwords. Only invited
+  emails exist in the pool, and an unknown email fails the same way a wrong code does. Three wrong codes end
+  the attempt; a code works for 10 minutes.
+- The API (`cloud/app/api.py`) takes the email from the signed-in token, never from the request, and checks
+  every save with `spx_quant.profile.validate`, so the page and `profile set` accept the same values.
+- The scans do not read this table yet (plan item 7, issue #63). Until then the runner's secrets still set
+  the pilot's account.
+
+Deploys run from GitHub Actions in the runner repo (`site.yml`, action `deploy`), which signs in to AWS with
+OIDC (a short-lived token GitHub issues per run) and the `stormglass-deploy` role. `cloud/bootstrap.yaml`
+creates that role once; it can only touch StormGlass resources. The same workflow's `invite` action adds a
+user. Tests: `pip install -r cloud/requirements-dev.txt`, then `python -m unittest tests.test_cloud`
+(the API tests skip when moto is missing).
+
 ## Repeat policy: short "no change" messages (decided 2026-09-28)
 
 US-07-AC2 and the diagram (Part 4 screen 9, Part 5 notes) say an unchanged scan sends

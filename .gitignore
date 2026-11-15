@@ -11,3 +11,5 @@ data/cache/
 .env
 recordings/
 .cache/
+cloud/app/spx_quant/
+cloud/.aws-sam/
