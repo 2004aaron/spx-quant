@@ -25,7 +25,7 @@ class OutboxTest(unittest.TestCase):
         box = outbox.pending(self.conn, PARAMS)
         self.assertEqual([m["alert_id"] for m in box], [self.aid])
         self.assertEqual(box[0]["to"], "me@example.com")
-        self.assertIn("PROPOSAL", box[0]["subject"])
+        self.assertIn("collect $", box[0]["subject"])
         self.assertIn("reply with ACCEPTED, DECLINED or MODIFIED", box[0]["body"])
 
     def test_delivered_leaves_the_outbox_and_counts_for_b_kr1(self):

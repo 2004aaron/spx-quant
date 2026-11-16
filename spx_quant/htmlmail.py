@@ -6,9 +6,11 @@ drop <style> blocks and class names, so every style is inline and layout is tabl
 """
 from __future__ import annotations
 
+import os
 import re
 from datetime import datetime
 from html import escape
+from urllib.parse import quote
 
 from . import clock
 from .alert import CURVE_ORDER, KIND_TITLE, _money
@@ -104,11 +106,13 @@ def callout(text) -> Raw:
                f'font-size:13px;line-height:19px">{e(text)}</div>')
 
 
-def page(badge: str, colour: str, ref: str, title: str, sub: str, parts: list, footer: list[str]) -> str:
-    """The card every email shares: navy band, headline, body, small print."""
+def page(badge: str, colour: str, ref: str, title: str, sub: str, parts: list, footer: list[str], preheader: str = "") -> str:
+    """The card every email shares: navy band, headline, body, small print. `preheader` is the inbox preview line."""
     foot = "".join(f'<div style="margin:0 0 3px 0">{e(x)}</div>' for x in footer)
     return (
         f'<!DOCTYPE html><html><body style="margin:0;padding:0;background-color:{PAGE}">'
+        + (f'<div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:{PAGE}">'
+           f'{e(preheader)}</div>' if preheader else "") +
         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{PAGE}"><tr>'
         f'<td align="center" style="padding:24px 10px">'
         f'<table role="presentation" width="640" cellpadding="0" cellspacing="0" style="width:100%;max-width:640px;'
@@ -126,9 +130,9 @@ def page(badge: str, colour: str, ref: str, title: str, sub: str, parts: list, f
 
 
 # ---- alerts ----
-# The alert card keeps only what a person needs to decide: the trade, what it pays, the odds, the
-# downside, and how to reply. Risk tables, ranking, assumptions and rejected candidates stay in the
-# plain-text body and the log, which remain the full record.
+# The alert card keeps only what a person needs to decide: the trade, what it pays, the odds, where the
+# index has to stay, the downside, and one tap to answer. Risk tables, ranking, assumptions and rejected
+# candidates stay in the plain-text body and the log, which remain the full record.
 
 def _fine_print(res: ScanResult, created_ts: datetime) -> list[str]:
     age = f"{res.quote_age_min:.0f} min old, " if res.quote_age_min is not None else ""
@@ -147,13 +151,76 @@ def _order(c) -> Raw:
         sell = l.qty < 0
         what = (f'<strong style="color:{RED if sell else GREEN}">{"Sell" if sell else "Buy"}</strong> '
                 f'{abs(l.qty) * c.sized.contracts} &times; {l.strike:g} {"put" if l.right == "P" else "call"}')
-        quote = f'<span style="font-family:{MONO}">{e(l.sym)}</span>  bid {l.bid:.2f} / ask {l.ask:.2f}'
-        rows.append(f'<tr><td style="padding:10px 0;border-bottom:1px solid {LINE};font-size:15px">{what}'
-                    f'<div style="margin:2px 0 0 0;font-size:11px;color:{MUTED}">{quote}</div></td>'
-                    f'<td align="right" valign="top" style="padding:10px 0;border-bottom:1px solid {LINE};font-size:15px">'
+        quote = f'<span style="font-family:{MONO}">{e(l.sym)}</span>&nbsp; bid {l.bid:.2f} / ask {l.ask:.2f}'
+        rows.append(f'<tr><td style="padding:12px 0;border-bottom:1px solid {LINE};font-size:16px">{what}'
+                    f'<div style="margin:3px 0 0 0;font-size:11px;color:{MUTED}">{quote}</div></td>'
+                    f'<td align="right" valign="top" style="padding:12px 0;border-bottom:1px solid {LINE};font-size:16px">'
                     f'<strong>{l.mid:.2f}</strong><div style="font-size:11px;color:{MUTED}">price</div></td></tr>')
-    return Raw(f'<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:20px 0 0 0">'
-               f'{"".join(rows)}</table>')
+    return Raw(f'<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">{"".join(rows)}</table>')
+
+
+def _underlying(res: ScanResult) -> float | None:
+    """The proposal's own index level: XSP is a tenth of SPX."""
+    if res.spot is None:
+        return None
+    return res.spot / 10 if res.best.position.ticker == "_XSP" else res.spot
+
+
+def _zone(res: ScanResult) -> list:
+    """Where the index has to finish for the trade to make money, as a sentence and a coloured bar."""
+    p, r = res.best.position, res.best.risk
+    now, be = _underlying(res), sorted(r.breakevens)
+    if now is None or not be or len(be) > 2:
+        return []
+    name, day = p.ticker.lstrip("_"), f"{p.exp:%b} {p.exp.day}"
+    if len(be) == 2:
+        zones = [(be[0], False), (be[1], True), (None, False)]
+        text = (f"You profit if {name} finishes between <strong>{be[0]:,.0f}</strong> and <strong>{be[1]:,.0f}</strong> "
+                f"on {day}. Today it is {now:,.0f}: it can fall {(now - be[0]) / now:.1%} or rise "
+                f"{(be[1] - now) / now:.1%} before you lose money.")
+    else:
+        up = now > be[0]
+        zones = [(be[0], not up), (None, up)]
+        text = (f"You profit if {name} finishes {'above' if up else 'below'} <strong>{be[0]:,.0f}</strong> on {day}. "
+                f"Today it is {now:,.0f}: it can {'fall' if up else 'rise'} {abs(now - be[0]) / now:.1%} "
+                f"before you lose money.")
+    lo, hi = min(be + [now]) * 0.97, max(be + [now]) * 1.03
+    pct = lambda x: max(1, round((x - lo) / (hi - lo) * 100))
+    cells, edge, marks = [], lo, []
+    for stop, good in zones:
+        end = hi if stop is None else stop
+        cells.append(f'<td width="{pct(end) - pct(edge)}%" height="10" bgcolor="{GREEN if good else "#f2c4c4"}" '
+                     f'style="font-size:1px;line-height:1px">&nbsp;</td>')
+        edge = end
+    at = pct(now)
+    label = f'<span style="font-size:12px;font-weight:600;color:{INK}">&#9650; today {now:,.0f}</span>'
+    marker = (f'<td width="{at}%"></td><td align="left">{label}</td>' if at < 60
+              else f'<td width="{at}%" align="right">{label}</td><td></td>')
+    bar = (f'<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:12px 0 0 0">'
+           f'<tr>{"".join(cells)}</tr></table>'
+           f'<table width="100%" cellpadding="0" cellspacing="0" style="margin:4px 0 0 0"><tr>{marker}</tr></table>')
+    return [section(f"Where {name} needs to be"), Raw(f'<p style="margin:0;font-size:15px;line-height:22px">{text}</p>'), Raw(bar)]
+
+
+def _button(label: str, href: str, solid: bool) -> str:
+    style = (f"background-color:{GREEN};color:#ffffff;border:1px solid {GREEN}" if solid
+             else f"background-color:#ffffff;color:{INK};border:1px solid #b6bec8")
+    return (f'<td style="padding:0 8px 8px 0"><a href="{e(href)}" style="display:inline-block;padding:10px 14px;white-space:nowrap;'
+            f'border-radius:6px;font-size:15px;font-weight:600;text-decoration:none;{style}">{e(label)}</a></td>')
+
+
+def _answer(aid: str, reply_to: str | None) -> list:
+    """One-tap answers: each button opens a reply whose subject carries the alert ID and whose first line
+    is the decision, which is what the reply reader looks for. Without a sender address, plain text."""
+    how = Raw("Or just reply with <strong>ACCEPTED</strong>, <strong>DECLINED</strong> or <strong>MODIFIED 2</strong> "
+              "(the lots you took). Reply <strong>CLOSED</strong> later if you exit early.")
+    if not reply_to:
+        return [callout(how)]
+    subj = quote(f"Re: [StormGlass {aid}]")
+    href = lambda body: f"mailto:{reply_to}?subject={subj}&body={quote(body)}"
+    buttons = (_button("I took it", href("ACCEPTED"), True) + _button("I passed", href("DECLINED"), False)
+               + _button("Took fewer", href("MODIFIED "), False))
+    return [Raw(f'<table cellpadding="0" cellspacing="0" style="margin:22px 0 0 0"><tr>{buttons}</tr></table>'), small(how)]
 
 
 def _why(res: ScanResult) -> str:
@@ -166,18 +233,24 @@ def _why(res: ScanResult) -> str:
             f"({r.ann_return_bp:.1f}% a year on buying power).")
 
 
-def alert_html(res: ScanResult, aid: str, created_ts: datetime, prev: dict | None = None) -> str:
+def reply_address(env=os.environ) -> str | None:
+    return env.get("SPX_QUANT_SMTP_FROM") or env.get("SPX_QUANT_SMTP_USER") or None
+
+
+def alert_html(res: ScanResult, aid: str, created_ts: datetime, prev: dict | None = None,
+               reply_to: str | None = None) -> str:
     """The HTML twin of alert.render (prev=None) or alert.render_unchanged (prev = the alert repeated)."""
     footer = _fine_print(res, created_ts)
     if res.kind != "proposal":
         what = KIND_TITLE.get(res.kind, "SCAN")
         title = "Do not enter today" if res.kind == "stand_down" else "No trade today"
         badge = "NO CHANGE" if prev else what
-        sub = f"Unchanged since {prev['alert_id']}" if prev else "Nothing to act on from this scan"
-        return page(badge, BADGE.get(badge, MUTED), aid, title, sub, [section("Why"), bullets(res.reasons)], footer)
+        sub = f"Unchanged since {prev['alert_id']}" if prev else "Sit this one out. Here is why:"
+        return page(badge, BADGE.get(badge, MUTED), aid, title, sub, [Raw('<div style="height:12px"></div>'),
+                    bullets(res.reasons)], footer, preheader=res.reasons[0] if res.reasons else "")
 
     c = res.best
-    p, s, r, prof = c.position, c.sized, c.risk, res.profile
+    p, s, r = c.position, c.sized, c.risk
     lots = f"{s.contracts} lot{'' if s.contracts == 1 else 's'}"
     title = f"Sell {lots} of the {p.ticker.lstrip('_')} {p.label()}"
     sub = f"Expires {p.exp:%a %b} {p.exp.day} ({p.dte} days)"
@@ -187,15 +260,17 @@ def alert_html(res: ScanResult, aid: str, created_ts: datetime, prev: dict | Non
         ("Profit odds", f"{r.pop:.0%}", "model estimate"),
         ("Worst case", money(r.worst_case), f"if the index drops {abs(move):.0%} fast" if move else "stress test"),
     ])
-    reply = callout(Raw("Reply <strong>ACCEPTED</strong>, <strong>DECLINED</strong> or <strong>MODIFIED 2</strong> "
-                        "(the lots you took). Reply <strong>CLOSED</strong> later if you exit early."))
-    cut = ""
     why = {"worst case": "stay inside your worst-case limit", BOOK_NOTE: "fit your remaining buying power"}
+    cut = ""
     if s.bp_contracts > s.contracts and s.limited_by in why:
         cut = f" Cut from {s.bp_contracts} to {s.contracts} lot{'' if s.contracts == 1 else 's'} to {why[s.limited_by]}."
     uses = small(f"Uses ${s.bp_total:,.0f} of your ${s.cap:,.0f} buying power.{cut}")
+    preview = f"Collect {_money(p.credit * s.contracts)}, {r.pop:.0%} odds, worst case {_money(r.worst_case)}"
+    reply_to = reply_to if reply_to is not None else reply_address()
     if prev:
         return page("NO CHANGE", BLUE, aid, f"Still stands: {title[0].lower()}{title[1:]}",
-                    f"Same proposal as {prev['alert_id']}  ·  {sub}", [numbers, _order(c), uses, reply], footer)
-    return page("PROPOSAL", GREEN, aid, title, sub, [numbers, _order(c), uses, reply, section("Why this trade"), note(_why(res))],
-                footer)
+                    f"Same proposal as {prev['alert_id']}  ·  {sub}",
+                    [numbers, section("The order"), _order(c), uses] + _answer(aid, reply_to), footer, preheader=preview)
+    parts = [numbers] + _zone(res) + [section("The order"), _order(c), uses] + _answer(aid, reply_to)
+    parts += [section("Why this trade"), note(_why(res))]
+    return page("PROPOSAL", GREEN, aid, title, sub, parts, footer, preheader=preview)

@@ -182,7 +182,8 @@ def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
         c = res.best
         p, s, r = c.position, c.sized, c.risk
         prof = res.profile
-        subject = f"[StormGlass {aid}] PROPOSAL: {p.label()} {p.ticker.lstrip('_')} {p.exp:%m/%d} x{s.contracts}"
+        subject = (f"[StormGlass {aid}] Sell {s.contracts} {p.ticker.lstrip('_')} {p.label()}: "
+                   f"collect {_money(p.credit * s.contracts)}, {r.pop:.0%} odds")
         lines += ["", f"PROPOSAL: {p.label()} on {p.ticker.lstrip('_')}, expires {p.exp.isoformat()} ({p.dte} DTE)"]
         lines += [_leg_line(c, l) for l in sorted(p.legs, key=lambda l: (l.right, l.strike))]
         lines += [f"  {k}: {v}" for k, v in sizing_rows(c, prof)] + [f"  {n}" for n in sizing_notes(s)]
