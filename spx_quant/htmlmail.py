@@ -211,7 +211,7 @@ def _button(label: str, href: str, solid: bool) -> str:
 
 def _answer(aid: str, reply_to: str | None) -> list:
     """One-tap answers: each button opens a reply whose subject carries the alert ID and whose first line
-    is the decision, which is what the reply reader looks for. Without a sender address, plain text."""
+    is the decision, which is what the reply reader looks for. Text instructions only when there is no sender address."""
     how = Raw("Or just reply with <strong>ACCEPTED</strong>, <strong>DECLINED</strong> or <strong>MODIFIED 2</strong> "
               "(the lots you took). Reply <strong>CLOSED</strong> later if you exit early.")
     if not reply_to:
@@ -220,7 +220,7 @@ def _answer(aid: str, reply_to: str | None) -> list:
     href = lambda body: f"mailto:{reply_to}?subject={subj}&body={quote(body)}"
     buttons = (_button("I took it", href("ACCEPTED"), True) + _button("I passed", href("DECLINED"), False)
                + _button("Took fewer", href("MODIFIED "), False))
-    return [Raw(f'<table cellpadding="0" cellspacing="0" style="margin:22px 0 0 0"><tr>{buttons}</tr></table>'), small(how)]
+    return [Raw(f'<table cellpadding="0" cellspacing="0" style="margin:22px 0 0 0"><tr>{buttons}</tr></table>')]
 
 
 def _why(res: ScanResult) -> str:
