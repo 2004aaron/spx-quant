@@ -1,4 +1,5 @@
-"""Weekly digest emails (issue #63): the Monday outlook of open positions.
+"""Digest emails (issue #63): the Monday outlook of open positions, and the end-of-day check
+that asks whether a take-profit order filled (takeprofit.py).
 
 Built only from the log and a date, like the weekly report, so the same log and date give
 the same email. A digest reads one of two books:
@@ -9,7 +10,7 @@ the same email. A digest reads one of two books:
           book at the first mark that flags the profit target or settles
 
 The email goes out over the profile's email channel once per date: the send writes a
-`digest_monday` event holding the date, and a second run for that date sends nothing.
+`digest_<kind>` event holding the date, and a second run for that date sends nothing.
 """
 from __future__ import annotations
 
@@ -17,12 +18,12 @@ import time
 from dataclasses import dataclass
 from datetime import date
 
-from . import clock, decisions, htmlmail as h, notify, store
+from . import clock, decisions, htmlmail as h, notify, store, takeprofit as tp
 from .alert import _money
 from .report import _cols, end_of_day
 
 BOOKS = ("taken", "paper")
-KINDS = ("monday",)
+KINDS = ("monday", "eod")
 TOP = 10
 BOOK_NAME = {"taken": "your book", "paper": "paper book"}
 BOOK_NOTE = {"taken": "Your book: the proposals you accepted or modified, at the lots you took.",
@@ -96,12 +97,16 @@ def book(conn, asof: date, kind: str = "taken") -> list[Position]:
                 closed_on = clock.market_date(clock.parse_utc(d["received_ts"])).isoformat()
         m, closed, how = _exit([m for m in store.marks_for(conn, a["alert_id"]) if m["market_date"] <= day], kind, closed_on)
         scale, exp = lots / (a["contracts"] or lots), a["legs"][0]["exp"]
+        pnl, pct = (round(m["pnl"] * scale, 2), m["pnl_pct_credit"]) if m else (None, None)
+        if how == "closed by you" and d["price"]:   # closed at a known price, e.g. the take-profit limit
+            pnl = round((a["credit_per_lot"] - d["price"] * 100) * lots, 2)
+            pct = round(pnl / (a["credit_per_lot"] * lots), 4) if a["credit_per_lot"] else None
+            how = "take-profit order" if d["source"] == "presumed" or d["reason"].startswith("take-profit") else how
         worst = (a["risk"] or {}).get("worst_case")
         shorts = [l["strike"] for l in a["legs"] if l["qty"] < 0]
         out.append(Position(
             alert=a, lots=lots, entered=a["market_date"], expires=exp, dte=(date.fromisoformat(exp) - asof).days,
-            credit=round(a["credit_per_lot"] * lots, 2), pnl=round(m["pnl"] * scale, 2) if m else None,
-            pct=m["pnl_pct_credit"] if m else None, marked=m["market_date"] if m else None,
+            credit=round(a["credit_per_lot"] * lots, 2), pnl=pnl, pct=pct, marked=m["market_date"] if m else None,
             worst=round(worst * scale, 2) if worst is not None else None, bp=round((a["bp_per_lot"] or 0.0) * lots, 2),
             away=min(abs(k - m["spot"]) / m["spot"] for k in shorts) if m and m["spot"] and shorts else None,
             at_target=bool(m and m["exit_signal"] and not closed), closed=closed, how=how))
@@ -217,8 +222,85 @@ def monday(conn, asof: date, kind: str = "taken") -> tuple[str, str, str]:
     return subject, "\n".join(text) + "\n", html
 
 
-def build(which: str, conn, asof: date, kind: str = "taken") -> tuple[str, str, str]:
-    return {"monday": monday}[which](conn, asof, kind)
+EOD_NOTE = ("A touch means the price to close reached your take-profit limit on a check (every 30 minutes, quotes about "
+            "15 minutes delayed). It does not guarantee a fill, so tap the button that matches your broker.")
+
+
+def _clock(ts: str) -> str:
+    t = clock.to_local("PT", clock.parse_utc(ts))
+    return f"{t:%I:%M %p}".lstrip("0") + " PT"
+
+
+def _ask(t: tp.Touch, reply_to: str | None) -> str:
+    """One touched position: what happened on the left, what a fill made on the right, then the two answers."""
+    a, low = t.alert, t.low
+    when = _day(low["market_date"]) + ", " if not t.today else ""
+    what = f"Limit ${t.limit:.2f} · reached ${low['cost']:.2f} at {when}{_clock(low['quote_ts'] or low['ts'])}"
+    legs = "/".join(f"{l['strike']:g}{l['right']}" for l in sorted(a["legs"], key=lambda l: l["strike"]))
+    detail = f"{legs} · {t.lots} lot{'s' * (t.lots != 1)} · expires {_day(a['legs'][0]['exp'])}"
+    if not t.today:
+        detail += f" · logged as filled {_day(t.presume_on().isoformat())} if no answer"
+    buttons = ""
+    if reply_to:
+        href = lambda body: f"mailto:{reply_to}?subject={h.quote(f'Re: [StormGlass {t.aid}]')}&body={h.quote(body)}"
+        buttons = (f'<table cellpadding="0" cellspacing="0" style="margin:10px 0 0 0"><tr>'
+                   f'{h._button("It filled", href("FILLED"), True)}{h._button("Not filled", href("NOT FILLED"), False)}</tr></table>')
+    return (f'<tr><td valign="top" style="padding:12px 12px 12px 0;border-bottom:1px solid {h.LINE}">'
+            f'<div style="font-size:15px;font-weight:600">{h.e(a["ticker"].lstrip("_"))} {h.e(a["strategy"].replace("_", " "))}</div>'
+            f'<div style="margin:2px 0 0 0;font-size:12px;color:{h.MUTED}">{h.e(what)}</div>'
+            f'<div style="font-size:12px;color:{h.MUTED}">{h.e(detail)}</div>{buttons}</td>'
+            f'<td align="right" valign="top" width="34%" style="padding:12px 0;border-bottom:1px solid {h.LINE}">'
+            f'<div style="font-size:16px;font-weight:700;color:{h.GREEN}">{h.e(_money(t.profit, True))}</div>'
+            f'<div style="font-size:11px;color:{h.MUTED}">if it filled</div></td></tr>')
+
+
+def eod(conn, asof: date, kind: str = "taken", reply_to: str | None = None) -> tuple[str, str, str] | None:
+    """(subject, plain text, HTML) of the end-of-day email, or None when nothing is open or waiting.
+    Always the taken book: only positions you hold have a take-profit order to ask about."""
+    touches = tp.pending(conn, end_of_day(asof), asof)
+    pos = sorted((p for p in book(conn, asof, "taken") if not p.closed), key=lambda p: -(p.pct or -9))
+    if not pos and not touches:
+        return None
+    today, waiting = [t for t in touches if t.today], [t for t in touches if not t.today]
+    pnl = sum(p.pnl or 0.0 for p in pos)
+    if today:
+        title = f"{len(today)} take-profit{'s' * (len(today) != 1)} hit today"
+    elif waiting:
+        title = "Did your take-profit fill?"
+    else:
+        title = f"{len(pos)} open, {_money(pnl, True)} unrealized"
+    subject = f"[StormGlass] End of day {asof.isoformat()}: {title}"
+    reply_to = reply_to if reply_to is not None else h.reply_address()
+    text = [f"STORMGLASS | END OF DAY | {asof.isoformat()} | your book", BOOK_NOTE["taken"], ""]
+    parts: list = [h.tiles([("Unrealized P/L", h.money(pnl, True), f"{len(pos)} open position{'s' * (len(pos) != 1)}"),
+                            ("Closest to target", f"{max(p.pct or 0 for p in pos):.0%}" if pos else "n/a", "of credit captured"),
+                            ("To answer", str(len(touches)), "take-profit touches")])]
+    for name, rows in (("Hit your take-profit today", today), ("Still waiting on your answer", waiting)):
+        if not rows:
+            continue
+        text += [name.upper()]
+        for t in rows:
+            text.append(f"  {t.aid}  {t.alert['ticker'].lstrip('_')} {t.alert['strategy'].replace('_', ' ')} x{t.lots}  "
+                        f"limit {t.limit:.2f}, reached {t.low['cost']:.2f} on {t.low['market_date']} {_clock(t.low['quote_ts'] or t.low['ts'])}, "
+                        f"{_money(t.profit, True)} if filled")
+        text += ["  Reply FILLED or NOT FILLED to [StormGlass ID]. No answer in 3 trading days logs it as filled.", ""]
+        parts += [h.section(name), h.Raw('<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">'
+                                         + "".join(_ask(t, reply_to) for t in rows) + "</table>")]
+    if pos:
+        text += ["OPEN POSITIONS"] + _cols([["Position", "Strikes", "Entered", "Lots", "Expires", "Credit", "P/L (of credit)",
+                                              "To short strike"]] + [_row(p, False) for p in pos])
+        parts += [h.section(f"Open positions ({TOP} closest to target of {len(pos)})" if len(pos) > TOP else "Open positions"),
+                  _list(pos[:TOP], False)]
+    text += ["", EOD_NOTE, MARKS_NOTE, h.DISCLAIMER]
+    d = f"{asof:%a %b} {asof.day}, {asof.year}"
+    sub = f"{d}  ·  {_money(pnl, True)} unrealized" if touches else d
+    html = h.page("END OF DAY", h.GREEN if today else h.BLUE, f"digest-eod-{asof.isoformat()}", title, sub, parts,
+                  [EOD_NOTE, HTML_NOTE, h.DISCLAIMER], preheader=subject.split(": ", 1)[-1])
+    return subject, "\n".join(text) + "\n", html
+
+
+def build(which: str, conn, asof: date, kind: str = "taken") -> tuple[str, str, str] | None:
+    return {"monday": monday, "eod": eod}[which](conn, asof, kind)
 
 
 def send(conn, profile, params, which: str, asof: date, message: tuple[str, str, str], channel=None,

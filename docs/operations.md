@@ -141,6 +141,26 @@ A proposal email says nothing about the other positions you hold. When held posi
 size, the email says only "Sized down from 3 to 2 lots to fit your remaining buying power."
 The list of held positions and the dollars left (US-13-AC1) stays in the log: `scan.detail.notes`.
 
+## Take-profit by GTC order (added 2026-11-16)
+
+StormGlass never places or closes trades, so the 50% exit lives at the investor's broker. Every
+proposal says: after your fill, place a GTC buy-to-close for the whole order at half the credit
+(`takeprofit.limit_price`, rounded down to a nickel). A reply like `ACCEPTED @ 7.05` records the fill
+credit, and the limit follows it.
+
+| Step | When | What is logged |
+| --- | --- | --- |
+| `tp check` | every 30 min, 6:30 to 13:15 PT, plus the 10:30 scan and the closing mark | one `tp_check` row per taken position: cost to close (ask on shorts, bid on longs), limit, hit |
+| `digest eod --send` | after the afternoon mark | `digest_eod` event; the email lists each touch with "It filled" / "Not filled" buttons |
+| reply `FILLED` | next reply pass | `closed` decision with `price` = the limit; P/L in the taken book uses that price |
+| reply `NOT FILLED` | next reply pass | `tp_unfilled` event; the position is asked about again on its next touch |
+| `tp presume` | after the closing check | no answer 3 trading days after the first touch: `closed`, source `presumed`, at the limit |
+
+A touch is not a fill: the Cboe quotes are about 15 minutes delayed, a 30-minute check can miss a
+short spike, and a limit can trade through without filling. The buttons make the investor the
+source of truth; the presumed close keeps buying power from staying tied up when nobody answers.
+The paper book and the autonomous account still close at the closing mark's exit signal.
+
 ## Settings site (added 2026-11-15)
 
 Account settings live on a web page instead of a file. `cloud/` holds it:

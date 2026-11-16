@@ -1,4 +1,4 @@
-"""SQLite log (US-08): six append-only tables, one file per user.
+"""SQLite log (US-08): seven append-only tables, one file per user.
 
 Triggers refuse UPDATE and DELETE on every table, so the weekly report can be
 regenerated from the log and come out the same every time (US-11-AC1, QR-4).
@@ -30,7 +30,9 @@ SCHEMA = {
                pnl REAL, pnl_pct_credit REAL, settled INTEGER NOT NULL DEFAULT 0, exit_signal TEXT,
                basis TEXT, legs TEXT""",
     "feedback": """alert_id TEXT NOT NULL, received_ts TEXT, decision TEXT, reason TEXT, contracts INTEGER,
-                   source TEXT, ref TEXT""",
+                   source TEXT, ref TEXT, price REAL""",
+    "tp_check": """alert_id TEXT NOT NULL, market_date TEXT NOT NULL, ts TEXT NOT NULL, quote_ts TEXT, cost REAL,
+                   limit_price REAL, hit INTEGER NOT NULL DEFAULT 0""",
     "event": """ts TEXT NOT NULL, kind TEXT NOT NULL, detail TEXT, alert_id TEXT""",
 }
 JSON_COLS = {"detail", "leg_quotes", "regime", "legs", "risk", "reasons", "codes", "quotes", "profile", "candidates"}
