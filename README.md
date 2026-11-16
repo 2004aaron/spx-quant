@@ -56,21 +56,39 @@ fill-cost guard on thin structures. Evidence and the end-to-end comparison: [`do
 Only the current rule set is in the code. The retired rules are in the git history, and the backtest
 scripts and raw data that produced the evidence are on the [`research` branch](https://github.com/2004aaron/spx-quant/tree/research).
 
-## Beta work on main (from October 19)
+## Beta release (v0.7-beta, November 16, 2026)
 
-With Alpha released, the Beta and RC stories are back on `main` for the Beta window
-(October 30 to November 15). They were built in v0.5 and held back from the Alpha release.
+Beta is the notification milestone: every scan's result is emailed with the quotes it was built
+on and two timestamps, the investor answers by replying, and the log feeds a daily, a weekly and
+a Monday email. It ran on a schedule from October 30 for two users at once: the pilot, and an
+autonomous paper account ($250,000 Reg-T) that takes every proposal and closes at the 50% profit target.
+
+One change from the proposal: the scans run on GitHub Actions with an encrypted log in a private
+runner repo, started on time by cron-job.org, instead of a rented VM with cron
+([`docs/operations.md`](docs/operations.md)).
+
+### Beta key results (October 30 to November 13)
+
+| Key result | Result | Band | Output |
+| --- | --- | --- | --- |
+| B-KR1 alerts delivered within 5 minutes of the scan | 21 of 21 (100%) | A | [`docs/results/b-kr1.md`](docs/results/b-kr1.md) |
+| B-KR2 scheduled scans that sent a message | 21 of 22 | B | [`docs/results/b-kr2.md`](docs/results/b-kr2.md) |
+| B-KR3 alerts with quotes, trend line and both timestamps | 21 of 21 (100%) | A | [`docs/results/b-kr3.md`](docs/results/b-kr3.md) |
+
+The one miss is the October 30 13:25 scan, which GitHub started after its slot. Bands come from the
+grading table in [`docs/okrs.md`](docs/okrs.md).
 
 | Story | What it does | Module |
 | --- | --- | --- |
-| US-07 alerts | each scan queues one plain-text message in the log; Gmail (through the scheduled run) or Discord sends it; delivery recorded with retries | `notify.py`, `alert.py` |
+| US-07 alerts | each scan queues one message in the log, plain text plus an HTML card; Gmail (through the scheduled run) or Discord sends it; delivery recorded with retries | `notify.py`, `alert.py`, `htmlmail.py` |
 | US-08 append-only log | scan, alert, delivery, mark, feedback and event tables; updates and deletes refused | `store.py` |
 | US-09 daily marks | every open proposal marked at the closing quotes; flags the 50% profit target (the only exit rule); settlement at expiration | `mark.py` |
 | US-10 decisions | accepted, declined, modified N or closed, from the CLI or an email reply | `decisions.py` |
 | US-11, US-12 weekly report | advisor book vs your book, predicted vs realized worst case, failures and anomalies | `report.py` |
 | Monday outlook email (issue #63) | open positions on Monday morning: the 10 closest to expiry and the 10 with the largest stated worst case, for the book you took or the paper book | `digest.py` |
 | US-13 remaining buying power (stretch) | sizes against buying power left after open positions | `sizing.py` |
-| Beta and RC KR scripts | B-KR1 to B-KR3, RC-KR1 to RC-KR3, S-KR1 | `kr.py` |
+| Settings site (issue #63) | email-code sign-in, a profile API and a settings page on AWS; built and tested, not deployed yet | `cloud/` |
+| Beta and RC KR scripts | B-KR1 to B-KR3 with their grading bands, RC-KR1 to RC-KR3, S-KR1 | `kr.py` |
 
 ## Run it
 
@@ -79,7 +97,7 @@ Python 3.11 or newer. No third-party packages, no install step.
 ```bash
 git clone https://github.com/2004aaron/spx-quant.git
 cd spx-quant
-python -m unittest discover -s tests -t . -v        # 220 tests, about 17 seconds
+python -m unittest discover -s tests -t . -v        # 235 tests, about 18 seconds
 
 python -m spx_quant profile set --net-liq 150000 --margin portfolio --bp-cap 0.08 --max-worst-case 0.05
 python -m spx_quant profile show
@@ -90,6 +108,7 @@ python -m spx_quant log --from 2026-10-05
 python -m spx_quant kr a1             # A-KR1: both scans on every trading day, Oct 5-16
 python -m spx_quant kr a2 --plant     # A-KR2: entry check, with the planted-row proof
 python -m spx_quant kr a3             # A-KR3: sizing matrix
+python -m spx_quant kr b2             # B-KR2: scheduled scans that sent a message (b1, b3 likewise)
 ```
 
 Global options go before the command: `--profile PATH`, `--db PATH`, `--params PATH`.
@@ -127,7 +146,7 @@ spx_quant/
   digest.py        Monday outlook email of open positions         issue #63
   store.py         append-only SQLite scan log                    A-KR1, A-KR2
   pipeline.py      scan -> log
-  kr.py            Alpha key-result checks                        section 6
+  kr.py            key-result checks, Alpha to RC                 section 6
   synthetic.py     synthetic boards for tests and A-KR3
   clock.py         Eastern/Pacific time and the NYSE calendar without tzdata
 config/params.toml every parameter with a validation tag and a source
