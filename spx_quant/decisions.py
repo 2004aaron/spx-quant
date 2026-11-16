@@ -8,6 +8,10 @@ parses the reply and passes the Gmail message id as `ref`, so a reply is never c
   modified   taken at a different size (--contracts N); counts at that size
   declined   not taken
   closed     a taken position closed before expiration; releases its buying power
+
+A decision can carry a price per share of the whole order: the fill credit on accepted or
+modified ("ACCEPTED @ 7.05"), the cost to close on closed (the take-profit limit when a GTC
+order filled, see takeprofit.py).
 """
 from __future__ import annotations
 
@@ -21,6 +25,7 @@ DECISIONS = ("accepted", "modified", "declined", "closed")
 TAKEN = ("accepted", "modified")
 REPLY = re.compile(r"^\s*(accepted|accept|declined|decline|modified|modify|closed|close)\b[\s,:.-]*(\d+)?", re.I)
 ALIASES = {"accept": "accepted", "decline": "declined", "modify": "modified", "close": "closed"}
+PRICE = re.compile(r"@\s*\$?(\d+(?:\.\d+)?)|\bat\s+\$?(\d+\.\d+)", re.I)   # "at" needs a decimal: "at 7.05"
 
 
 class DecisionError(ValueError):
@@ -43,6 +48,12 @@ def parse_reply(body: str) -> tuple[str, int | None] | None:
     return ALIASES.get(word, word), int(m.group(2)) if m.group(2) else None
 
 
+def parse_price(body: str) -> float | None:
+    """'ACCEPTED @ 7.05' / 'modified 2 at $6.90' -> the price per share; None without one."""
+    m = PRICE.search(body or "")
+    return float(m.group(1) or m.group(2)) if m else None
+
+
 def latest(conn, alert_id: str, asof: datetime | None = None) -> dict | None:
     q, args = "SELECT * FROM feedback WHERE alert_id = ?", [alert_id]
     if asof is not None:
@@ -57,7 +68,7 @@ def history(conn, alert_id: str) -> list[dict]:
 
 
 def record(conn, alert_id: str, decision: str, now: datetime, reason: str = "", contracts: int | None = None,
-           source: str = "cli", ref: str | None = None) -> str:
+           source: str = "cli", ref: str | None = None, price: float | None = None) -> str:
     """Validate and store one decision. Returns 'recorded' or 'duplicate' (same ref seen before)."""
     decision = ALIASES.get(decision.lower(), decision.lower())
     a = store.get_alert(conn, alert_id)
@@ -79,8 +90,10 @@ def record(conn, alert_id: str, decision: str, now: datetime, reason: str = "", 
         contracts = None
     else:
         contracts = a["contracts"] if decision == "accepted" else None
+    if decision == "declined" or (price is not None and price <= 0):
+        price = None
     store.insert(conn, "feedback", alert_id=alert_id, received_ts=now, decision=decision, reason=reason.strip(),
-                 contracts=contracts, source=source, ref=ref)
+                 contracts=contracts, source=source, ref=ref, price=price)
     return "recorded"
 
 
@@ -107,3 +120,9 @@ def taken_size(conn, alert: dict, asof: datetime) -> int | None:
     """Contracts the investor holds (or held) on this alert as of `asof`, None if never taken."""
     taken = [d for d in history(conn, alert["alert_id"]) if d["received_ts"] <= asof.isoformat() and d["decision"] in TAKEN]
     return int(taken[-1]["contracts"] or alert["contracts"]) if taken else None
+
+
+def fill_price(conn, alert_id: str) -> float | None:
+    """The fill credit per share the investor reported on the latest accepted or modified decision."""
+    taken = [d for d in history(conn, alert_id) if d["decision"] in TAKEN]
+    return taken[-1]["price"] if taken and taken[-1]["price"] else None

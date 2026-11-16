@@ -15,6 +15,7 @@ from urllib.parse import quote
 from . import clock
 from .alert import CURVE_ORDER, KIND_TITLE, _money
 from .engine import BOOK_NOTE, ScanResult
+from .takeprofit import limit_price
 
 INK, MUTED, LINE, SHADE, PAGE = "#1f2328", "#59636e", "#d8dee4", "#f6f8fa", "#eef1f5"
 NAVY, AMBER, RED, GREEN, BLUE, GOLD = "#13203a", "#d08a52", "#cf222e", "#1a7f37", "#0969da", "#9a6700"
@@ -213,7 +214,8 @@ def _answer(aid: str, reply_to: str | None) -> list:
     """One-tap answers: each button opens a reply whose subject carries the alert ID and whose first line
     is the decision, which is what the reply reader looks for. Text instructions only when there is no sender address."""
     how = Raw("Or just reply with <strong>ACCEPTED</strong>, <strong>DECLINED</strong> or <strong>MODIFIED 2</strong> "
-              "(the lots you took). Reply <strong>CLOSED</strong> later if you exit early.")
+              "(the lots you took), with your fill price if you like: <strong>ACCEPTED @ 7.05</strong>. "
+              "Reply <strong>CLOSED</strong> later if you exit early.")
     if not reply_to:
         return [callout(how)]
     subj = quote(f"Re: [StormGlass {aid}]")
@@ -265,12 +267,16 @@ def alert_html(res: ScanResult, aid: str, created_ts: datetime, prev: dict | Non
     if s.bp_contracts > s.contracts and s.limited_by in why:
         cut = f" Cut from {s.bp_contracts} to {s.contracts} lot{'' if s.contracts == 1 else 's'} to {why[s.limited_by]}."
     uses = small(f"Uses ${s.bp_total:,.0f} of your ${s.cap:,.0f} buying power.{cut}")
+    gtc = callout(Raw(f"<strong>Then set your take-profit:</strong> a GTC buy-to-close for the whole order at "
+                      f"<strong>${limit_price({'credit_per_lot': p.credit}):.2f}</strong>, half the credit. Your broker closes it "
+                      f"at the 50% target and StormGlass asks after the close whether it filled. Filled at a different price? "
+                      f"Use half of what you got, and add it to your answer: <strong>ACCEPTED @ 7.05</strong>."))
     preview = f"Collect {_money(p.credit * s.contracts)}, {r.pop:.0%} odds, worst case {_money(r.worst_case)}"
     reply_to = reply_to if reply_to is not None else reply_address()
     if prev:
         return page("NO CHANGE", BLUE, aid, f"Still stands: {title[0].lower()}{title[1:]}",
                     f"Same proposal as {prev['alert_id']}  ·  {sub}",
-                    [numbers, section("The order"), _order(c), uses] + _answer(aid, reply_to), footer, preheader=preview)
-    parts = [numbers] + _zone(res) + [section("The order"), _order(c), uses] + _answer(aid, reply_to)
+                    [numbers, section("The order"), _order(c), uses, gtc] + _answer(aid, reply_to), footer, preheader=preview)
+    parts = [numbers] + _zone(res) + [section("The order"), _order(c), uses, gtc] + _answer(aid, reply_to)
     parts += [section("Why this trade"), note(_why(res))]
     return page("PROPOSAL", GREEN, aid, title, sub, parts, footer, preheader=preview)

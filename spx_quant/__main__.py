@@ -15,8 +15,9 @@
   reply ID TEXT [--ref R]                       record a decision from an email reply's text
   show ID                                       one alert with its deliveries, decisions and marks
   report [--end YYYY-MM-DD] [--days 7] [--out FILE]   weekly report (US-11, US-12)
-  digest monday [--date D] [--book taken|paper] [--out FILE] [--html FILE] [--send]
-                                                Monday outlook email: open positions by expiry and by risk
+  digest monday|eod [--date D] [--book taken|paper] [--out FILE] [--html FILE] [--send]
+                                                Monday outlook, or the end-of-day take-profit check (taken book)
+  tp      check|presume|pending                 take-profit GTC watch: log a price check, close unanswered touches
 """
 from __future__ import annotations
 
@@ -28,6 +29,7 @@ from datetime import date
 from pathlib import Path
 
 from . import __version__, clock, decisions, digest, kr, mark, notify, outbox, pipeline, report, store
+from . import takeprofit as tp
 from . import profile as prof
 from .data import cboe
 from .params import DEFAULT_PATH as PARAMS_PATH, load_params
@@ -168,9 +170,9 @@ def cmd_delivered(a, params) -> int:
     return 0
 
 
-def _decide(a, decision, contracts, reason, source, ref) -> int:
+def _decide(a, decision, contracts, reason, source, ref, price=None) -> int:
     try:
-        r = decisions.record(store.connect(a.db), a.alert_id, decision, clock.now_utc(), reason or "", contracts, source, ref)
+        r = decisions.record(store.connect(a.db), a.alert_id, decision, clock.now_utc(), reason or "", contracts, source, ref, price)
     except decisions.DecisionError as e:
         print(f"rejected: {e}")
         return 2
@@ -179,15 +181,41 @@ def _decide(a, decision, contracts, reason, source, ref) -> int:
 
 
 def cmd_decide(a, params) -> int:
-    return _decide(a, a.decision, a.contracts, a.reason, a.source, a.ref)
+    return _decide(a, a.decision, a.contracts, a.reason, a.source, a.ref, a.price)
 
 
 def cmd_reply(a, params) -> int:
+    try:
+        r = tp.answer(store.connect(a.db), a.alert_id, a.text, clock.now_utc(), a.ref)
+    except decisions.DecisionError as e:
+        print(f"rejected: {e}")
+        return 2
+    if r is not None:
+        print(f"{a.alert_id}: take-profit answer {r}")
+        return 0
     parsed = decisions.parse_reply(a.text)
     if parsed is None:
-        print("rejected: the reply does not start with accepted, declined, modified or closed; nothing stored")
+        print("rejected: the reply does not start with accepted, declined, modified, closed, filled or not filled; nothing stored")
         return 2
-    return _decide(a, parsed[0], parsed[1], a.text.strip()[:200], "email", a.ref)
+    return _decide(a, parsed[0], parsed[1], a.text.strip()[:200], "email", a.ref, decisions.parse_price(a.text))
+
+
+def cmd_tp(a, params) -> int:
+    conn = store.connect(a.db)
+    now = clock.now_utc()
+    if a.action == "check":
+        rows = tp.check(conn, _source(a, params), params)
+        for r in rows:
+            print(f"{r['alert_id']}  close {r['cost']:.2f}  limit {r['limit_price']:.2f}{'  TOUCHED' if r['hit'] else ''}")
+        print(f"{len(rows)} position(s) checked, {sum(r['hit'] for r in rows)} at the take-profit limit")
+    elif a.action == "presume":
+        closed = tp.presume(conn, now)
+        print("\n".join(f"{x}: no answer in {tp.PRESUME_DAYS} trading days, closed at the limit" for x in closed)
+              or "no unanswered touches old enough to close")
+    else:
+        for t in tp.pending(conn, now):
+            print(f"{t.aid}  limit {t.limit:.2f}  low {t.low['cost']:.2f} on {t.low['market_date']}  presumed filled {t.presume_on()}")
+    return 0
 
 
 def cmd_show(a, params) -> int:
@@ -223,6 +251,9 @@ def cmd_digest(a, params) -> int:
     conn = store.connect(a.db)
     asof = date.fromisoformat(a.date) if a.date else clock.market_date(clock.now_utc())
     message = digest.build(a.which, conn, asof, a.book)
+    if message is None:
+        print(f"{a.which} digest for {asof.isoformat()}: nothing open or waiting, nothing to send")
+        return 0
     for path, body in ((a.out, message[1]), (a.html, message[2])):
         if path:
             Path(path).write_text(body, encoding="utf-8")
@@ -307,6 +338,7 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("--reason", default="")
     q.add_argument("--source", default="cli", choices=["cli", "email"])
     q.add_argument("--ref", help="id of the email reply, so it is never counted twice")
+    q.add_argument("--price", type=float, help="per share for the whole order: fill credit, or cost to close")
     q.set_defaults(fn=cmd_decide)
 
     q = sub.add_parser("reply")
@@ -314,6 +346,11 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("text", help="the reply's text; its first word is the decision")
     q.add_argument("--ref", help="id of the email reply")
     q.set_defaults(fn=cmd_reply)
+
+    q = sub.add_parser("tp")
+    q.add_argument("action", choices=["check", "presume", "pending"])
+    replayable(q)
+    q.set_defaults(fn=cmd_tp)
 
     q = sub.add_parser("show")
     q.add_argument("alert_id")

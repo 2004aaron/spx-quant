@@ -13,7 +13,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-TABLES = ("scan", "alert", "delivery", "mark", "feedback", "event")
+TABLES = ("scan", "alert", "delivery", "mark", "feedback", "event", "tp_check")
 
 
 def dump(db: str, out: str) -> str:

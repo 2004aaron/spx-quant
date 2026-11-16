@@ -10,6 +10,7 @@ import json
 import textwrap
 from datetime import datetime
 
+from .takeprofit import limit_price
 from . import clock
 from .analytics import assumptions_text
 from .engine import BOOK_NOTE, Candidate, ScanResult
@@ -149,7 +150,8 @@ def _header(res: ScanResult, title: str, aid: str, created_ts: datetime) -> list
 
 
 REPLY_LINE = ("To record your decision, reply with ACCEPTED, DECLINED or MODIFIED <contracts> as the first word "
-              "(for example: modified 1). Later, reply CLOSED if you exit early.")
+              "(for example: modified 1), and your fill price after @ if you like (accepted @ 7.05). "
+              "Later, reply CLOSED if you exit early.")
 
 
 def render_unchanged(res: ScanResult, aid: str, created_ts: datetime, prev: dict) -> tuple[str, str]:
@@ -187,6 +189,8 @@ def render(res: ScanResult, aid: str, created_ts: datetime) -> tuple[str, str]:
         lines += ["", f"PROPOSAL: {p.label()} on {p.ticker.lstrip('_')}, expires {p.exp.isoformat()} ({p.dte} DTE)"]
         lines += [_leg_line(c, l) for l in sorted(p.legs, key=lambda l: (l.right, l.strike))]
         lines += [f"  {k}: {v}" for k, v in sizing_rows(c, prof)] + [f"  {n}" for n in sizing_notes(s)]
+        lines += ["", f"TAKE PROFIT: after your fill, place a GTC buy-to-close for the whole order at "
+                      f"{limit_price({'credit_per_lot': p.credit}):.2f} (half the credit; half your fill credit if it differs)."]
         lines += ["", f"RISK (model estimates for {'1 lot' if s.contracts == 1 else f'all {s.contracts} lots'})"]
         lines += [f"  {k}: {v}" for k, v in risk_rows(c, prof)]
         lines += ["", "ASSUMPTIONS"]
