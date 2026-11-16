@@ -4,8 +4,11 @@
   a2  A-KR2  proposals that fail an entry check; --plant proves each check catches a bad row
   a3  A-KR3  24 sizing cases (4 account sizes x 2 margin types x 3 regimes), zero violations
   b1  B-KR1  delivered messages within 5 minutes of scan completion
-  b2  B-KR2  scheduled scans that produced a delivered message
-  b3  B-KR3  delivered alerts that carry their quotes, data timestamp and output timestamp
+  b2  B-KR2  scheduled scans that produced a delivered message and did not start late
+  b3  B-KR3  delivered alerts that carry their quotes, data timestamp and output timestamp;
+             proposals also carry the strategy and the trend line
+
+Beta checks print the grading band from docs/okrs.md beside the target.
 """
 from __future__ import annotations
 
@@ -24,7 +27,11 @@ from .synthetic import SyntheticSource
 
 CHECKS = ("a1", "a2", "a3", "b1", "b2", "b3", "rc1", "rc2", "rc3", "s1")
 WINDOWS = {"a": (date(2026, 10, 5), date(2026, 10, 16)), "b": (date(2026, 10, 30), date(2026, 11, 13)),
+           "b1": (date(2026, 10, 30), date(2026, 11, 15)),
            "r": (date(2026, 10, 5), date(2026, 12, 8)), "s": (date(2026, 10, 5), date(2026, 12, 8))}
+BANDS = {"b1": ((0.90, "A"), (0.80, "B"), (0.70, "C"), (0.50, "D")),
+         "b2": ((22, "A"), (21, "B"), (19, "C"), (16, "D")),
+         "b3": ((1.00, "A"), (0.90, "B"), (0.80, "C"), (0.70, "D"))}
 A3_SIZES = (100_000, 150_000, 500_000, 1_500_000)  # portfolio margin needs $100,000+
 A3_MARGINS = ("reg_t", "portfolio")
 A3_REGIMES = (("low", 14.5), ("normal", 17.5), ("elevated", 24.0))
@@ -36,6 +43,10 @@ def trading_days(start: date, end: date) -> list[date]:
 
 def _ts(s: str | None) -> datetime | None:
     return clock.parse_utc(s) if s else None
+
+
+def band(which: str, value: float) -> str:
+    return next((letter for floor, letter in BANDS[which] if value >= floor), "F")
 
 
 def _table(header: list[str], rows: list[list]) -> str:
@@ -284,7 +295,7 @@ def a3(params: Params) -> tuple[str, bool]:
 # ---------------------------------------------------------------- Beta
 
 def _delivered(conn, start: date, end: date) -> list[dict]:
-    return store.rows(conn, """SELECT d.*, a.kind, a.text, a.legs, a.slot, a.market_date, s.finished_ts
+    return store.rows(conn, """SELECT d.*, a.kind, a.text, a.legs, a.strategy, a.slot, a.market_date, s.finished_ts
                                FROM delivery d JOIN alert a ON a.alert_id = d.alert_id
                                LEFT JOIN scan s ON s.alert_id = a.alert_id
                                WHERE d.status = 'delivered' AND a.market_date BETWEEN ? AND ? ORDER BY d.id""",
@@ -302,25 +313,34 @@ def b1(conn, params: Params, start: date, end: date, minutes: float = 5) -> tupl
     pct = on_time / len(ds) if ds else 0.0
     text = f"### B-KR1 delivered within {minutes:g} minutes of scan completion, {start} to {end}\n\n"
     text += _table(["alert", "channel", "minutes", "on time"], rows) if rows else "_no deliveries in the window_"
-    text += f"\n\n**{on_time} of {len(ds)} on time ({pct:.0%})** (target 95%)."
+    text += f"\n\n**{on_time} of {len(ds)} on time ({pct:.0%})** (target 95%; grading band {band('b1', pct) if ds else 'F'}, A is 90%+)."
     return text, bool(ds) and pct >= 0.95
 
 
 def b2(conn, params: Params, start: date, end: date) -> tuple[str, bool]:
+    """A slot counts when its scan sent a message and started within 30 minutes of the slot
+    (the engine logs a scan_late event otherwise)."""
     slots = list(params.schedule["slots"])
-    rows, good, total = [], 0, 0
+    rows, good, total, late_n = [], 0, 0, 0
     for d in trading_days(start, end):
         for s in slots:
             total += 1
-            got = store.rows(conn, """SELECT d.status FROM scan sc JOIN delivery d ON d.alert_id = sc.alert_id
+            got = store.rows(conn, """SELECT d.status, (SELECT COUNT(*) FROM event e WHERE e.kind = 'scan_late'
+                                                         AND e.alert_id = sc.alert_id) AS late
+                                      FROM scan sc JOIN delivery d ON d.alert_id = sc.alert_id
                                       WHERE sc.slot = ? AND sc.market_date = ?""", (s, d.isoformat()))
             statuses = sorted({g["status"] for g in got})
-            ok = "delivered" in statuses
+            sent = any(g["status"] == "delivered" for g in got)
+            late = sent and not any(g["status"] == "delivered" and not g["late"] for g in got)
+            late_n += late
+            ok = sent and not late
             good += ok
-            rows.append([d.isoformat(), s, ", ".join(statuses) or "no scan", "yes" if ok else "no"])
+            rows.append([d.isoformat(), s, ", ".join(statuses) or "no scan", "late" if late else "no" if sent else "-",
+                         "yes" if ok else "no"])
     text = f"### B-KR2 scheduled scans that sent a message, {start} to {end}\n\n"
-    text += _table(["date", "slot PT", "delivery statuses", "message sent"], rows)
-    text += f"\n\n**{good} of {total} scheduled scans sent a message** (target {total} of {total})."
+    text += _table(["date", "slot PT", "delivery statuses", "scan_late", "counts"], rows)
+    text += f"\n\n**{good} of {total} scheduled scans sent a message** on time; {late_n} sent one after a `scan_late` event " \
+            f"(target {total} of {total}; grading band {band('b2', 22 - (total - good))})."
     return text, good == total and total > 0
 
 
@@ -339,6 +359,11 @@ def b3_fields(d: dict) -> list[str]:
             line = next((x for x in t.splitlines() if l["sym"] in x), "")
             if "bid " not in line or "ask " not in line:
                 missing.append(f"{l['sym']} bid/ask")
+        if (d.get("strategy") or "missing").replace("_", " ") not in t:
+            missing.append("strategy")
+        trend = next((l.strip() for l in t.splitlines() if l.strip().startswith("Trend: ")), "")
+        if not (trend.startswith("Trend: unknown (") or all(x in trend for x in ("50-day", "200-day", "close ", " on "))):
+            missing.append("trend")
     return missing
 
 
@@ -354,9 +379,11 @@ def b3(conn, params: Params, start: date, end: date) -> tuple[str, bool]:
         rows.append([d["alert_id"], d["kind"], "complete" if not miss else "missing " + ", ".join(miss)])
     n = len(rows)
     text = f"### B-KR3 alerts carrying quotes, data timestamp and output timestamp, {start} to {end}\n\n"
+    text += "Proposals must also name the strategy and carry the trend line (SPX 50-day and 200-day averages with the " \
+            "close date, or the reason the trend is unknown).\n\n"
     text += _table(["alert", "kind", "fields"], rows) if rows else "_no delivered alerts in the window_"
     text += f"\n\n**{good} of {n} complete ({good / n:.0%})**" if n else "\n\n**0 alerts**"
-    text += " (target 100%)."
+    text += f" (target 100%; grading band {band('b3', good / n) if n else 'F'})."
     return text, n > 0 and good == n
 
 
@@ -455,7 +482,7 @@ def run(which: str, conn, params: Params, start: date | None, end: date | None, 
         broker: str | None = None) -> tuple[str, bool]:
     if which == "a3":
         return a3(params)
-    s, e = WINDOWS[which[0]]
+    s, e = WINDOWS.get(which, WINDOWS[which[0]])
     start, end = start or s, end or e
     if which == "a1":
         return a1(conn, params, start, end)

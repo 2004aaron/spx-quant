@@ -94,10 +94,37 @@ class BetaKRTest(unittest.TestCase):
         self.assertIn("1 of 2 scheduled scans sent a message", text)
         self.assertFalse(ok)
 
+    def test_b_kr2_late_scan_does_not_count(self):
+        conn = memdb()
+        noon = clock.local_to_utc("PT", datetime(2026, 10, 30, 12, 0))
+        pipeline.scan(conn, SyntheticSource(35.0, "flat", now=noon), PROFILE, PARAMS, "10:30", channel=FakeChannel(),
+                      sleep=lambda s: None)
+        text, ok = kr.b2(conn, PARAMS, date(2026, 10, 30), date(2026, 10, 30))
+        self.assertIn("| 2026-10-30 | 10:30 | delivered | late | no |", text)
+        self.assertIn("0 of 2 scheduled scans sent a message** on time; 1 sent one after a `scan_late` event", text)
+        self.assertFalse(ok)
+
     def test_b_kr3_short_no_change_messages_still_carry_quotes_and_timestamps(self):
         text, ok = kr.b3(self.conn, PARAMS, date(2026, 10, 30), date(2026, 11, 2))
         self.assertTrue(ok, text)
         self.assertIn("4 of 4 complete", text)
+
+    def test_b_kr3_proposal_needs_strategy_and_trend_line(self):
+        conn = memdb()
+        pipeline.scan(conn, replay(), PROFILE, PARAMS, "13:25", channel=FakeChannel(), sleep=lambda s: None)
+        d = kr._delivered(conn, date(2026, 9, 28), date(2026, 9, 28))[0]
+        self.assertEqual(d["kind"], "proposal")
+        self.assertEqual(kr.b3_fields(d), [])
+        no_trend = dict(d, text="\n".join(l for l in d["text"].splitlines() if "Trend: " not in l))
+        self.assertEqual(kr.b3_fields(no_trend), ["trend"])
+        bare = dict(d, text=d["text"].replace(next(l for l in d["text"].splitlines() if "Trend: " in l), "  Trend: up"))
+        self.assertEqual(kr.b3_fields(bare), ["trend"])
+        self.assertEqual(kr.b3_fields(dict(d, strategy="iron_condor")), ["strategy"])
+
+    def test_bands_follow_the_grading_table(self):
+        self.assertEqual([kr.band("b1", x) for x in (1.0, 0.90, 0.899, 0.70, 0.50, 0.49)], ["A", "A", "B", "C", "D", "F"])
+        self.assertEqual([kr.band("b2", x) for x in (22, 21, 20, 19, 18, 16, 15)], ["A", "B", "C", "C", "D", "D", "F"])
+        self.assertEqual([kr.band("b3", x) for x in (1.0, 0.99, 0.90, 0.89, 0.70, 0.69)], ["A", "B", "B", "C", "D", "F"])
 
 
 if __name__ == "__main__":
