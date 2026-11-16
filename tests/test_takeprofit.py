@@ -105,6 +105,30 @@ class TakeProfitTest(unittest.TestCase):
         row, = self.at(29, 9, put=2.0, call=2.0)
         self.assertEqual((row["limit_price"], row["hit"]), (4.25, 1))
 
+    def test_the_end_of_day_scan_asks_first(self):
+        self.take()
+        self.at(29, 11, put=2.0, call=1.0)
+        src = PatchedSource(pt(29, 13, 25), quote_et="2026-09-29T16:14:59")
+        a = pipeline.scan(self.conn, src, pm150(), PARAMS, "13:25", send=False).alert
+        self.assertIn("1 take-profit to confirm", a["subject"])
+        self.assertTrue(a["text"].startswith("STORMGLASS |"))
+        self.assertIn("TAKE-PROFIT: DID IT FILL?", a["text"])
+        self.assertLess(a["html"].index("Did your take-profit fill?"), a["html"].index("font-size:22px"))
+        morning = pipeline.scan(self.conn, PatchedSource(pt(29, 10, 30), quote_et="2026-09-29T13:20:00"), pm150(), PARAMS,
+                                "10:30", send=False).alert
+        self.assertNotIn("take-profit", morning["subject"])
+
+    def test_friday_close_lists_the_weeks_exits(self):
+        self.take()
+        self.at(29, 11, put=2.0, call=1.0)
+        tp.answer(self.conn, self.aid, "FILLED", pt(29, 14))
+        subject, text, html = digest.friday(self.conn, date(2026, 10, 2))
+        profit = round((self.alert["credit_per_lot"] - self.limit * 100) * self.alert["contracts"])
+        self.assertIn(f"1 closed, +${profit:,}", subject)
+        self.assertIn("Take-profit order filled Tue Sep 29", html)
+        self.assertIn("CLOSED THIS WEEK", text)
+        self.assertIn("nothing closed", digest.friday(self.conn, date(2026, 10, 9))[0])
+
     def test_nothing_to_send_when_nothing_is_taken(self):
         self.assertIsNone(digest.eod(self.conn, date(2026, 9, 29)))
 

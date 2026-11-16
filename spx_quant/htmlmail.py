@@ -107,8 +107,11 @@ def callout(text) -> Raw:
                f'font-size:13px;line-height:19px">{e(text)}</div>')
 
 
-def page(badge: str, colour: str, ref: str, title: str, sub: str, parts: list, footer: list[str], preheader: str = "") -> str:
-    """The card every email shares: navy band, headline, body, small print. `preheader` is the inbox preview line."""
+def page(badge: str, colour: str, ref: str, title: str, sub: str, parts: list, footer: list[str], preheader: str = "",
+         top: list = ()) -> str:
+    """The card every email shares: navy band, headline, body, small print. `preheader` is the inbox preview line;
+    `top` goes above the headline, set off by a rule (the end-of-day take-profit question)."""
+    lead = ("".join(e(x) for x in top) + f'<div style="height:24px;border-bottom:2px solid {LINE};margin:0 0 22px 0"></div>') if top else ""
     foot = "".join(f'<div style="margin:0 0 3px 0">{e(x)}</div>' for x in footer)
     return (
         f'<!DOCTYPE html><html><body style="margin:0;padding:0;background-color:{PAGE}">'
@@ -121,7 +124,7 @@ def page(badge: str, colour: str, ref: str, title: str, sub: str, parts: list, f
         f'<tr><td bgcolor="{NAVY}" style="padding:14px 24px"><table role="presentation" width="100%" cellpadding="0" '
         f'cellspacing="0"><tr><td style="color:#ffffff;font-size:13px;font-weight:700;letter-spacing:3px">STORMGLASS</td>'
         f'<td align="right">{pill(badge, colour)}</td></tr></table></td></tr>'
-        f'<tr><td style="padding:22px 24px 24px 24px">'
+        f'<tr><td style="padding:22px 24px 24px 24px">{lead}'
         f'<div style="font-size:22px;line-height:28px;font-weight:700">{e(title)}</div>'
         f'<div style="margin:4px 0 0 0;font-size:14px;color:{MUTED}">{e(sub)}</div>'
         + "".join(e(x) for x in parts) +
@@ -240,7 +243,7 @@ def reply_address(env=os.environ) -> str | None:
 
 
 def alert_html(res: ScanResult, aid: str, created_ts: datetime, prev: dict | None = None,
-               reply_to: str | None = None) -> str:
+               reply_to: str | None = None, top: list = ()) -> str:
     """The HTML twin of alert.render (prev=None) or alert.render_unchanged (prev = the alert repeated)."""
     footer = _fine_print(res, created_ts)
     if res.kind != "proposal":
@@ -249,7 +252,7 @@ def alert_html(res: ScanResult, aid: str, created_ts: datetime, prev: dict | Non
         badge = "NO CHANGE" if prev else what
         sub = f"Unchanged since {prev['alert_id']}" if prev else "Sit this one out. Here is why:"
         return page(badge, BADGE.get(badge, MUTED), aid, title, sub, [Raw('<div style="height:12px"></div>'),
-                    bullets(res.reasons)], footer, preheader=res.reasons[0] if res.reasons else "")
+                    bullets(res.reasons)], footer, preheader=res.reasons[0] if res.reasons else "", top=top)
 
     c = res.best
     p, s, r = c.position, c.sized, c.risk
@@ -276,7 +279,7 @@ def alert_html(res: ScanResult, aid: str, created_ts: datetime, prev: dict | Non
     if prev:
         return page("NO CHANGE", BLUE, aid, f"Still stands: {title[0].lower()}{title[1:]}",
                     f"Same proposal as {prev['alert_id']}  ·  {sub}",
-                    [numbers, section("The order"), _order(c), uses, gtc] + _answer(aid, reply_to), footer, preheader=preview)
+                    [numbers, section("The order"), _order(c), uses, gtc] + _answer(aid, reply_to), footer, preheader=preview, top=top)
     parts = [numbers] + _zone(res) + [section("The order"), _order(c), uses, gtc] + _answer(aid, reply_to)
     parts += [section("Why this trade"), note(_why(res))]
-    return page("PROPOSAL", GREEN, aid, title, sub, parts, footer, preheader=preview)
+    return page("PROPOSAL", GREEN, aid, title, sub, parts, footer, preheader=preview, top=top)
