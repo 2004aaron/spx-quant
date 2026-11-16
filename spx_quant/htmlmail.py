@@ -11,10 +11,8 @@ from datetime import datetime
 from html import escape
 
 from . import clock
-from .alert import (CURVE_ORDER, KIND_TITLE, _money, email_notes, ranked_first, risk_rows, sizing_notes,
-                    sizing_rows)
-from .analytics import assumptions_text
-from .engine import ScanResult
+from .alert import CURVE_ORDER, KIND_TITLE, _money
+from .engine import BOOK_NOTE, ScanResult
 
 INK, MUTED, LINE, SHADE, PAGE = "#1f2328", "#59636e", "#d8dee4", "#f6f8fa", "#eef1f5"
 NAVY, AMBER, RED, GREEN, BLUE, GOLD = "#13203a", "#d08a52", "#cf222e", "#1a7f37", "#0969da", "#9a6700"
@@ -128,96 +126,76 @@ def page(badge: str, colour: str, ref: str, title: str, sub: str, parts: list, f
 
 
 # ---- alerts ----
+# The alert card keeps only what a person needs to decide: the trade, what it pays, the odds, the
+# downside, and how to reply. Risk tables, ranking, assumptions and rejected candidates stay in the
+# plain-text body and the log, which remain the full record.
 
-def _stamps(res: ScanResult, created_ts: datetime) -> list[str]:
+def _fine_print(res: ScanResult, created_ts: datetime) -> list[str]:
     age = f"{res.quote_age_min:.0f} min old, " if res.quote_age_min is not None else ""
     data = f"{clock.fmt(res.data_ts)} ({age}{res.source})" if res.data_ts is not None else f"n/a ({res.source})"
-    return [f"Output: {clock.fmt(created_ts)}", f"Data as of: {data}"]
-
-
-def _market(res: ScanResult) -> list:
-    if res.spot is None and res.regime is None:
-        return []
-    rows = []
+    out = [f"Output: {clock.fmt(created_ts)}", f"Data as of: {data}"]
     if res.spot is not None:
-        rows.append(((res.market_ticker or "_SPX").lstrip("_"), f"{res.spot:,.2f}"))
-        vals = "   ".join(f"{name} {res.curve[k]:.2f}" for k, name in CURVE_ORDER if res.curve.get(k) is not None)
-        if vals:
-            rows.append(("Volatility curve", vals))
-    if res.regime is not None:
-        r = res.regime
-        slope = f" (slope {r.slope:+.3f})" if r.slope is not None else ""
-        rows.append(("Regime", f"{r.state} / {r.bucket}{slope}" if r.known else f"unknown ({r.reason})"))
-    if res.trend is not None:
-        rows.append(("Trend", str(res.trend)))
-    return [section("Market"), pairs(rows)]
+        curve = "  ".join(f"{name} {res.curve[k]:.2f}" for k, name in CURVE_ORDER if res.curve.get(k) is not None)
+        out.append(f"{(res.market_ticker or '_SPX').lstrip('_')} {res.spot:,.2f}  {curve}".rstrip())
+    return out + ["Full detail (risk, sizing, assumptions) is in the log under the ID above.", DISCLAIMER]
 
 
-def _legs(c) -> Raw:
+def _order(c) -> Raw:
+    """One line per leg: what to do, then the contract and its quotes in small print."""
     rows = []
     for l in sorted(c.position.legs, key=lambda l: (l.right, l.strike)):
         sell = l.qty < 0
-        rows.append([Raw(f'<strong style="color:{RED if sell else GREEN}">{"SELL" if sell else "BUY"}</strong>'),
-                     abs(l.qty) * c.sized.contracts, Raw(f'<span style="font-family:{MONO};font-size:12px">{e(l.sym)}</span>'),
-                     f"{l.strike:g} {'put' if l.right == 'P' else 'call'}", f"{l.bid:.2f}", f"{l.ask:.2f}",
-                     Raw(f"<strong>{l.mid:.2f}</strong>"), f"{l.iv:.1%}", f"{l.delta:+.3f}"])
-    return table(["Side", "Qty", "Contract", "Strike", "Bid", "Ask", "Mid", "IV", "Delta"], rows, right=(1, 4, 5, 6, 7, 8))
+        what = (f'<strong style="color:{RED if sell else GREEN}">{"Sell" if sell else "Buy"}</strong> '
+                f'{abs(l.qty) * c.sized.contracts} &times; {l.strike:g} {"put" if l.right == "P" else "call"}')
+        quote = f'<span style="font-family:{MONO}">{e(l.sym)}</span>  bid {l.bid:.2f} / ask {l.ask:.2f}'
+        rows.append(f'<tr><td style="padding:10px 0;border-bottom:1px solid {LINE};font-size:15px">{what}'
+                    f'<div style="margin:2px 0 0 0;font-size:11px;color:{MUTED}">{quote}</div></td>'
+                    f'<td align="right" valign="top" style="padding:10px 0;border-bottom:1px solid {LINE};font-size:15px">'
+                    f'<strong>{l.mid:.2f}</strong><div style="font-size:11px;color:{MUTED}">price</div></td></tr>')
+    return Raw(f'<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:20px 0 0 0">'
+               f'{"".join(rows)}</table>')
 
 
-def _tail(res: ScanResult) -> list:
-    out = []
-    if res.rejected:
-        out += [section("Considered, not proposed"),
-                bullets([f"{c.position.label()} {c.position.ticker.lstrip('_')} {c.position.exp:%m/%d} "
-                         f"{c.position.legs_text()}: {'; '.join(c.reasons)}" for c in res.rejected], small=True)]
-    if email_notes(res):
-        out += [section("Notes"), bullets(email_notes(res))]
-    return out
+def _why(res: ScanResult) -> str:
+    p, r = res.best.position, res.best.risk
+    if p.strategy in res.preferred and len(res.ranked) > 1:
+        return f"The market is trending up, which favors the {p.label()}."
+    if len(res.ranked) == 1:
+        return f"The only trade that fit your limits today ({r.ann_return_bp:.1f}% a year expected on buying power)."
+    return (f"Best expected return of the {len(res.ranked)} trades that fit your limits "
+            f"({r.ann_return_bp:.1f}% a year on buying power).")
 
 
 def alert_html(res: ScanResult, aid: str, created_ts: datetime, prev: dict | None = None) -> str:
     """The HTML twin of alert.render (prev=None) or alert.render_unchanged (prev = the alert repeated)."""
-    footer = _stamps(res, created_ts) + [res.params_summary, DISCLAIMER]
-    reply = Raw("Reply to this email with <strong>ACCEPTED</strong>, <strong>DECLINED</strong> or "
-                "<strong>MODIFIED 2</strong> (the contracts you took) as the first word. "
-                "Later, reply <strong>CLOSED</strong> if you exit early.")
+    footer = _fine_print(res, created_ts)
     if res.kind != "proposal":
         what = KIND_TITLE.get(res.kind, "SCAN")
-        title = "Do not enter today" if res.kind == "stand_down" else f"No advice ({res.outcome.replace('_', ' ')})"
+        title = "Do not enter today" if res.kind == "stand_down" else "No trade today"
         badge = "NO CHANGE" if prev else what
         sub = f"Unchanged since {prev['alert_id']}" if prev else "Nothing to act on from this scan"
-        return page(badge, BADGE.get(badge, MUTED), aid, title, sub,
-                    [section("Why"), bullets(res.reasons)] + _market(res) + ([] if prev else _tail(res)), footer)
+        return page(badge, BADGE.get(badge, MUTED), aid, title, sub, [section("Why"), bullets(res.reasons)], footer)
 
     c = res.best
     p, s, r, prof = c.position, c.sized, c.risk, res.profile
     lots = f"{s.contracts} lot{'' if s.contracts == 1 else 's'}"
     title = f"Sell {lots} of the {p.ticker.lstrip('_')} {p.label()}"
-    sub = f"Expires {p.exp:%a %b} {p.exp.day}, {p.exp.year} ({p.dte} days)  ·  {p.legs_text()}"
+    sub = f"Expires {p.exp:%a %b} {p.exp.day} ({p.dte} days)"
+    move = r.assumptions.get("worst_case_move")
     numbers = tiles([
-        ("Credit", money(p.credit * s.contracts), f"${p.credit:,.2f} per lot at mid"),
-        ("Chance of profit", f"{r.pop:.0%}", "model estimate"),
-        ("Worst case", money(r.worst_case), f"{abs(r.worst_case) / prof.net_liq:.0%} of net liq, stress test"),
-        ("Buying power", f"${s.bp_total:,.0f}", f"cap ${s.cap:,.0f}"),
+        ("You collect", money(p.credit * s.contracts), f"${p.credit:,.0f} per lot" if s.contracts > 1 else "up front"),
+        ("Profit odds", f"{r.pop:.0%}", "model estimate"),
+        ("Worst case", money(r.worst_case), f"if the index drops {abs(move):.0%} fast" if move else "stress test"),
     ])
+    reply = callout(Raw("Reply <strong>ACCEPTED</strong>, <strong>DECLINED</strong> or <strong>MODIFIED 2</strong> "
+                        "(the lots you took). Reply <strong>CLOSED</strong> later if you exit early."))
+    cut = ""
+    why = {"worst case": "stay inside your worst-case limit", BOOK_NOTE: "fit your remaining buying power"}
+    if s.bp_contracts > s.contracts and s.limited_by in why:
+        cut = f" Cut from {s.bp_contracts} to {s.contracts} lot{'' if s.contracts == 1 else 's'} to {why[s.limited_by]}."
+    uses = small(f"Uses ${s.bp_total:,.0f} of your ${s.cap:,.0f} buying power.{cut}")
     if prev:
         return page("NO CHANGE", BLUE, aid, f"Still stands: {title[0].lower()}{title[1:]}",
-                    f"Same proposal as {prev['alert_id']}  ·  {sub}",
-                    [numbers, section("Order, at current quotes"), _legs(c), callout(reply)] + _market(res), footer)
-    stress = table([f"{mv:+.0%}" for mv, _ in r.stress], [[money(v, True) for _, v in r.stress]],
-                   right=tuple(range(len(r.stress))))
-    risk = [(k, v) for k, v in risk_rows(c, prof) if not k.startswith("Stress")]
-    parts = [numbers, section("Order"), _legs(c), callout(reply),
-             section("Sizing"), pairs(sizing_rows(c, prof))] + [note(n) for n in sizing_notes(s)]
-    parts += [section(f"Risk, model estimates for {'1 lot' if s.contracts == 1 else f'all {s.contracts} lots'}"), pairs(risk),
-              section("If the index moved right now"), stress]
-    parts += _market(res)
-    parts += [section("Why this trade"), note(ranked_first(res))]
-    if len(res.ranked) > 1:
-        parts.append(table(["#", "Candidate", "Return on BP", "EV", "Chance", "Worst case"],
-                           [[i, f"{x.position.label()} {x.position.ticker.lstrip('_')} {x.position.exp:%m/%d} "
-                                f"{x.position.legs_text()} x{x.sized.contracts}", f"{x.risk.ann_return_bp:.1f}%/yr",
-                             money(x.risk.ev), f"{x.risk.pop:.0%}", money(x.risk.worst_case)]
-                            for i, x in enumerate(res.ranked, 1)], right=(2, 3, 4, 5)))
-    parts += _tail(res) + [section("Assumptions"), small(assumptions_text(r.assumptions))]
-    return page("PROPOSAL", GREEN, aid, title, sub, parts, footer)
+                    f"Same proposal as {prev['alert_id']}  ·  {sub}", [numbers, _order(c), uses, reply], footer)
+    return page("PROPOSAL", GREEN, aid, title, sub, [numbers, _order(c), uses, reply, section("Why this trade"), note(_why(res))],
+                footer)
