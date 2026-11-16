@@ -10,7 +10,7 @@ import traceback
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 
-from . import clock, decisions, htmlmail, notify, store
+from . import clock, decisions, htmlmail, notify, store, takeprofit
 from .data import cboe
 from .alert import alert_id, fingerprint, render, render_unchanged
 from .engine import ScanResult, run_scan
@@ -111,8 +111,21 @@ def scan(conn, source, profile: Profile, params: Params, slot: str | None = None
     repeat = prev is not None and prev["fingerprint"] == fp
     brief = repeat and params.notify.get("repeat_policy", "brief") == "brief"
     subject, text = render_unchanged(res, aid, created, prev) if brief else render(res, aid, created)
+    top: list = []
+    if label == params.schedule["slots"][-1]:   # the end-of-day scan asks about take-profit touches first
+        from .digest import fill_question
+        touches = takeprofit.pending(conn, started)
+        if touches:
+            lines, top = fill_question(touches, htmlmail.reply_address())
+            first, _, rest = text.partition("\n")
+            text = "\n".join([first, "", "TAKE-PROFIT: DID IT FILL?", *lines, rest.lstrip("\n")])
+            n = len(touches)
+            subject = subject.replace("] ", f"] {n} take-profit{'s' * (n != 1)} to confirm · ", 1)
+            top = [htmlmail.Raw(f'<div style="font-size:20px;line-height:26px;font-weight:700">Did your take-profit fill?</div>'
+                                f'<div style="margin:4px 0 0 0;font-size:14px;color:{htmlmail.MUTED}">Tap the answer that matches '
+                                f'your broker. Today\'s proposal is below.</div>')] + top
     try:
-        html = htmlmail.alert_html(res, aid, created, prev if brief else None)
+        html = htmlmail.alert_html(res, aid, created, prev if brief else None, top=top)
     except Exception as e:   # the plain text is the record; a layout bug must not cost the scan
         html = None
         store.event(conn, created, "html_failed", f"{type(e).__name__}: {e}", aid)
