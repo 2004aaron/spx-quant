@@ -3,12 +3,18 @@ Transform: AWS::Serverless-2016-10-31
 Description: >
   StormGlass settings site. Email-code sign-in (Cognito custom auth, invite-only), one Lambda
   that serves the page and the profile API behind an HTTP API, one DynamoDB row per user.
+  Also what the scan runner needs: a private bucket for the plain log copies and a role that
+  can only read the users table and write under logs/ in that bucket.
 
 Parameters:
   SmtpParam:
     Type: String
     Default: /stormglass/smtp
     Description: SSM path holding the Gmail SMTP user and app password (SecureString)
+  GitHubRepo:
+    Type: String
+    Default: 2004aaron/stormglass-ops
+    Description: The runner repo. Only its main branch can take the runner role.
 
 Globals:
   Function:
@@ -106,6 +112,47 @@ Resources:
           Type: HttpApi
           Properties: {ApiId: !Ref SiteApi, Method: PUT, Path: /api/profile, Auth: {Authorizer: Cognito}}
 
+  LogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub stormglass-logs-${AWS::AccountId}
+      PublicAccessBlockConfiguration: {BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true}
+      OwnershipControls:
+        Rules: [{ObjectOwnership: BucketOwnerEnforced}]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+
+  # GitHub proves which repo and branch a run belongs to with a short-lived token (OIDC); the
+  # provider it is checked against comes from bootstrap.yaml. No AWS keys are stored anywhere.
+  RunnerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Federated: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"}
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepo}:ref:refs/heads/main
+      Policies:
+        - PolicyName: stormglass-runner
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ReadSettings
+                Effect: Allow
+                Action: dynamodb:GetItem
+                Resource: !GetAtt UsersTable.Arn
+              - Sid: WriteLogs
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub ${LogBucket.Arn}/logs/*
+
 Outputs:
   SiteUrl:
     Value: !Sub https://${SiteApi}.execute-api.${AWS::Region}.amazonaws.com/
@@ -115,3 +162,8 @@ Outputs:
     Value: !Ref UserPoolClient
   UsersTableName:
     Value: !Ref UsersTable
+  RunnerRoleArn:
+    Description: Goes in the runner repo variable AWS_RUNNER_ROLE_ARN
+    Value: !GetAtt RunnerRole.Arn
+  LogBucketName:
+    Value: !Ref LogBucket
