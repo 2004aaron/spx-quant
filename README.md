@@ -87,7 +87,7 @@ grading table in [`docs/okrs.md`](docs/okrs.md).
 | US-11, US-12 weekly report | advisor book vs your book, predicted vs realized worst case, failures and anomalies | `report.py` |
 | Monday outlook email (issue #63) | open positions on Monday morning: the 10 closest to expiry and the 10 with the largest stated worst case, for the book you took or the paper book | `digest.py` |
 | US-13 remaining buying power (stretch) | sizes against buying power left after open positions | `sizing.py` |
-| Settings site (issue #63) | email-code sign-in, a profile API and a settings page on AWS; built and tested, not deployed yet | `cloud/` |
+| Settings site (issue #63) | email-code sign-in, a profile API and a settings page on AWS; the scan runner reads the saved profile and copies its logs to a private bucket; built and tested, not deployed yet | `cloud/`, `deploy/cloud/siteprofile.py` |
 | Beta and RC KR scripts | B-KR1 to B-KR3 with their grading bands, RC-KR1 to RC-KR3, S-KR1 | `kr.py` |
 
 ## Run it
@@ -150,7 +150,7 @@ spx_quant/
   synthetic.py     synthetic boards for tests and A-KR3
   clock.py         Eastern/Pacific time and the NYSE calendar without tzdata
 config/params.toml every parameter with a validation tag and a source
-deploy/            cloud log carrier, two-log comparison, Beta host crontab
+deploy/            cloud log carrier, settings-site profile reader, two-log comparison, Beta host crontab
 docs/              build notes, backtest findings, story map, operations, KR results
 tests/             unittest suite; tests/data holds the recorded session
 ```

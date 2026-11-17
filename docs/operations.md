@@ -153,8 +153,18 @@ Account settings live on a web page instead of a file. `cloud/` holds it:
   the attempt; a code works for 10 minutes.
 - The API (`cloud/app/api.py`) takes the email from the signed-in token, never from the request, and checks
   every save with `spx_quant.profile.validate`, so the page and `profile set` accept the same values.
-- The scans do not read this table yet (plan item 7, issue #63). Until then the runner's secrets still set
-  the pilot's account.
+- The scans read this table once the runner repo has the variable `AWS_RUNNER_ROLE_ARN` (the stack's
+  `RunnerRoleArn` output). Before each run, `deploy/cloud/siteprofile.py EMAIL OUT.json` fetches the pilot's
+  row with the AWS command line tool, checks it with `profile.validate` and writes the run's profile file.
+  With the alerts switch off the profile's channel is `none`. No variable, no saved row, a value that fails
+  the check or any AWS error: the script exits 1, writes nothing, and the runner uses its secrets as before.
+- After a run saves its encrypted logs, it copies the plain dumps (`logdoc.py dump` format) to the bucket
+  `stormglass-logs-<account id>` as `logs/<email>.sql` and `logs/auto.sql`, where the Temporal worker
+  (item 8) will read them. The bucket blocks all public access and encrypts at rest (SSE-S3, keys managed
+  by S3). A failed copy prints a line and changes nothing else; the encrypted log stays the record.
+- The runner signs in with its own role (`RunnerRole` in the template), not the deploy role. It can do two
+  things: `dynamodb:GetItem` on the users table and `s3:PutObject` under `logs/`. Only runs on the main
+  branch of the runner repo can take it.
 
 Deploys run from GitHub Actions in the runner repo (`site.yml`, action `deploy`), which signs in to AWS with
 OIDC (a short-lived token GitHub issues per run) and the `stormglass-deploy` role. `cloud/bootstrap.yaml`

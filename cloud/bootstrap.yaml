@@ -55,6 +55,12 @@ Resources:
                 Resource:
                   - !Sub arn:${AWS::Partition}:s3:::aws-sam-cli-managed-default*
                   - !Sub arn:${AWS::Partition}:s3:::aws-sam-cli-managed-default*/*
+              - Sid: LogBucket
+                Effect: Allow
+                Action: s3:*
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::stormglass-logs-${AWS::AccountId}
+                  - !Sub arn:${AWS::Partition}:s3:::stormglass-logs-${AWS::AccountId}/*
               - Sid: FunctionRoles
                 Effect: Allow
                 Action:
