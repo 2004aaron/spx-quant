@@ -31,6 +31,10 @@ MARKS_NOTE = ("To short strike: how far the index was from the nearest short str
               "P/L is paper P/L from the engine's closing mid marks, not money earned.")
 
 
+HTML_NOTE = ("Cushion: how far the index is from your nearest short strike. Bars show progress to the 50% profit target. "
+             "P/L is from the engine's closing marks, not money earned.")
+
+
 @dataclass
 class Position:
     alert: dict
@@ -52,6 +56,10 @@ class Position:
     @property
     def name(self) -> str:
         return f"{self.alert['strategy'].replace('_', ' ')} {self.alert['ticker'].lstrip('_')}"
+
+    @property
+    def title(self) -> str:
+        return f"{self.alert['ticker'].lstrip('_')} {self.alert['strategy'].replace('_', ' ')}"
 
     @property
     def strikes(self) -> str:
@@ -118,12 +126,49 @@ def _row(p: Position, risk: bool) -> list[str]:
             + [_pnl(p), f"{p.away:.1%}" if p.away is not None else "n/a"])
 
 
-def _cells(p: Position, risk: bool) -> list:
-    """The same row for the HTML table, with the four naming cells stacked in one so it fits a phone."""
-    r = _row(p, risk)
+TARGET = 0.5   # the exit: half the credit captured
+
+
+def _days(n: int) -> str:
+    return "today" if n == 0 else f"in {n} day{'s' * (n != 1)}"
+
+
+def _progress(p: Position) -> str:
+    """A thin bar of the way to the profit target; red when the position is under water."""
+    if p.pct is None:
+        return ""
+    fill = max(2, min(100, round(abs(p.pct) / TARGET * 100)))
+    colour = h.GREEN if p.pct >= 0 else h.RED
+    return (f'<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:8px 0 0 0"><tr>'
+            f'<td width="{fill}%" height="4" bgcolor="{colour}" style="font-size:1px;line-height:1px">&nbsp;</td>'
+            + (f'<td height="4" bgcolor="{h.LINE}" style="font-size:1px;line-height:1px">&nbsp;</td>' if fill < 100 else "")
+            + "</tr></table>")
+
+
+def _item(p: Position, risk: bool) -> str:
+    """One position as a row: name and plain details on the left, the number that matters on the right."""
     tag = (" " + h.pill("AT\u00a0TARGET", h.GREEN)) * p.at_target
-    under = f"{p.lots} lot{'s' * (p.lots != 1)}, {p.strikes}, entered {r[2]}"
-    return [h.Raw(f'{h.e(p.name)}{tag}<br><span style="font-size:11px;color:{h.MUTED}">{h.e(under)}</span>')] + [h.red(c) for c in r[4:]]
+    cushion = f" · {p.away:.1%} cushion" if p.away is not None else ""
+    detail = f"{p.strikes} · {p.lots} lot{'s' * (p.lots != 1)} · entered {_day(p.entered)}"
+    when = f"Expires {_day(p.expires)} ({p.dte}d){cushion}"
+    if risk:
+        big, sub = h.money(p.worst), f"uses ${p.bp:,.0f}"
+    else:
+        big = h.money(p.pnl, True) if p.pnl is not None else "n/a"
+        sub = f"{p.pct:.0%} of credit" if p.pct is not None else "not marked yet"
+    return (f'<tr><td valign="top" style="padding:12px 12px 12px 0;border-bottom:1px solid {h.LINE}">'
+            f'<div style="font-size:15px;font-weight:600">{h.e(p.title)}{tag}</div>'
+            f'<div style="margin:2px 0 0 0;font-size:12px;color:{h.MUTED}">{h.e(when)}</div>'
+            f'<div style="font-size:12px;color:{h.MUTED}">{h.e(detail)}</div></td>'
+            f'<td align="right" valign="top" width="38%" style="padding:12px 0;border-bottom:1px solid {h.LINE}">'
+            f'<div style="font-size:16px;font-weight:700">{h.e(big)}</div>'
+            f'<div style="font-size:11px;color:{h.MUTED}">{h.e(sub)}</div>'
+            + ("" if risk else _progress(p)) + "</td></tr>")
+
+
+def _list(rows: list[Position], risk: bool) -> h.Raw:
+    return h.Raw('<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">'
+                 + "".join(_item(p, risk) for p in rows) + "</table>")
 
 
 def _tables(pos: list[Position]) -> list[tuple[str, list[str], list[Position], bool]]:
@@ -156,14 +201,19 @@ def monday(conn, asof: date, kind: str = "taken") -> tuple[str, str, str]:
         parts.append(h.note("No open positions in this book."))
     else:
         text += _cols([[k, f"{v} ({note})"] for k, v, note in stats])
-        parts += [h.tiles([(k, h.red(v), note) for k, v, note in half]) for half in (stats[:2], stats[2:])]   # 2 x 2 fits a phone
+        parts.append(h.tiles([("Credit open", h.money(credit), "collected at entry"),
+                              ("Buying power", f"${bp:,.0f}", "in use"),
+                              ("Worst case", h.money(worst), "all positions, stress test")]))
         for name, head, rows, risk in _tables(pos):
             text += ["", name.upper()] + _cols([["Position", "Strikes", "Entered", "Lots"] + head] + [_row(p, risk) for p in rows])
-            parts += [h.section(name), h.table(["Position"] + head, [_cells(p, risk) for p in rows], right=(1, 2, 3, 4), pad=5)]
+            parts += [h.section(("Biggest downside" if risk else "Expiring soonest") + name[name.find(" ("):] * (" (" in name)),
+                      _list(rows, risk)]
     text += ["", MARKS_NOTE, h.DISCLAIMER]
     d = f"{asof:%a %b} {asof.day}, {asof.year}"
-    html = h.page("MONDAY OUTLOOK", h.BLUE, f"digest-monday-{asof.isoformat()}", title, f"As of {d}  ·  {BOOK_NAME[kind]}", parts,
-                  [BOOK_NOTE[kind], MARKS_NOTE, h.DISCLAIMER])
+    sub = (f"{_money(pnl, True)} unrealized  ·  {soon} expiring this week  ·  {BOOK_NAME[kind]}" if n
+           else f"As of {d}  ·  {BOOK_NAME[kind]}")
+    html = h.page("MONDAY OUTLOOK", h.BLUE, f"digest-monday-{asof.isoformat()}", title, sub, parts,
+                  [f"As of {d}.", BOOK_NOTE[kind], HTML_NOTE, h.DISCLAIMER], preheader=subject.split(": ", 1)[-1])
     return subject, "\n".join(text) + "\n", html
 
 

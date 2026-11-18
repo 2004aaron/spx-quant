@@ -41,6 +41,12 @@ class ProposalHtmlTest(unittest.TestCase):
                   f"-${-risk['worst_case']:,.0f}", "ACCEPTED", "DECLINED", "MODIFIED", "never places orders"):
             self.assertIn(s, self.html)
 
+    def test_answers_are_buttons_that_reply_with_the_id_and_decision(self):
+        res = pipeline.scan(memdb(), replay(), EMAIL, PARAMS, "13:25", send=False).result
+        html = htmlmail.alert_html(res, "A1", EOD, reply_to="bot@example.com")
+        self.assertIn("mailto:bot@example.com?subject=Re%3A%20%5BStormGlass%20A1%5D&amp;body=ACCEPTED", html)
+        self.assertNotIn("Or just reply", html)
+
     def test_inline_styles_only_so_mail_clients_keep_the_layout(self):
         for banned in ("<style", "class=", "<script", "background:"):
             self.assertNotIn(banned, self.html)

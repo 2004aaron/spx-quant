@@ -127,7 +127,7 @@ class MondayTest(unittest.TestCase):
         self.assertEqual([l.split()[6:8] for l in soon.splitlines()[2:12]], [["Oct", str(n)] for n in range(1, 11)])
         self.assertEqual([l.split()[6] for l in risky.splitlines()[2:12]], [f"-${n},000" for n in range(11, 3, -1)] + ["-$3,762", "-$3,000"])
         self.assertIn("Oct 1 (3d)", html)
-        self.assertNotIn("Nov 30 (63d)", html.split("Most at risk")[0])    # the recorded one expires last: cut from the top 10
+        self.assertNotIn("Nov 30 (63d)", html.split("Biggest downside")[0])    # the recorded one expires last: cut from the top 10
         self.assertEqual(html.count("entered Sep 28"), 20)
 
     def test_html_carries_the_same_numbers_with_inline_styles_only(self):
