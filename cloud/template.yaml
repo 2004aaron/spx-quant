@@ -5,6 +5,7 @@ Description: >
   that serves the page and the profile API behind an HTTP API, one DynamoDB row per user.
   Also what the scan runner needs: a private bucket for the plain log copies and a role that
   can only read the users table and write under logs/ in that bucket.
+  With a Temporal address set, also the Lambda worker that sends the Monday and Friday emails.
 
 Parameters:
   SmtpParam:
@@ -15,6 +16,25 @@ Parameters:
     Type: String
     Default: 2004aaron/stormglass-ops
     Description: The runner repo. Only its main branch can take the runner role.
+  TemporalAddress:
+    Type: String
+    Default: ""
+    Description: Temporal Cloud endpoint, host:port. Empty leaves the worker out of the stack.
+  TemporalNamespace:
+    Type: String
+    Default: ""
+    Description: Temporal Cloud namespace, name.account
+  TemporalKeyParam:
+    Type: String
+    Default: /stormglass/temporal/api_key
+    Description: SSM path holding the Temporal Cloud API key (SecureString)
+  WorkerBuildId:
+    Type: String
+    Default: "1"
+    Description: Build id the worker reports. Must match the Worker Deployment Version in Temporal Cloud.
+
+Conditions:
+  HasTemporal: !Not [!Equals [!Ref TemporalAddress, ""]]
 
 Globals:
   Function:
@@ -153,6 +173,44 @@ Resources:
                 Action: s3:PutObject
                 Resource: !Sub ${LogBucket.Arn}/logs/*
 
+  # Temporal Cloud invokes this function when a digest task is waiting. It takes a role created
+  # from Temporal's own template (docs/operations.md), not anything in this stack.
+  WorkerFunction:
+    Type: AWS::Serverless::Function
+    Condition: HasTemporal
+    Properties:
+      FunctionName: stormglass-worker
+      CodeUri: worker/
+      Handler: worker.lambda_handler
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          TEMPORAL_ADDRESS: !Ref TemporalAddress
+          TEMPORAL_NAMESPACE: !Ref TemporalNamespace
+          TEMPORAL_KEY_PARAM: !Ref TemporalKeyParam
+          BUILD_ID: !Ref WorkerBuildId
+          USERS_TABLE: !Ref UsersTable
+          LOG_BUCKET: !Ref LogBucket
+          SMTP_PARAM: !Ref SmtpParam
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: dynamodb:Scan
+              Resource: !GetAtt UsersTable.Arn
+            - Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub ${LogBucket.Arn}/logs/*
+            - Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt LogBucket.Arn
+            - Effect: Allow
+              Action: ssm:GetParameters
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SmtpParam}/*
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${TemporalKeyParam}
+
 Outputs:
   SiteUrl:
     Value: !Sub https://${SiteApi}.execute-api.${AWS::Region}.amazonaws.com/
@@ -167,3 +225,7 @@ Outputs:
     Value: !GetAtt RunnerRole.Arn
   LogBucketName:
     Value: !Ref LogBucket
+  WorkerFunctionArn:
+    Condition: HasTemporal
+    Description: The function Temporal Cloud invokes; goes in Temporal's role template and the Worker Deployment Version
+    Value: !GetAtt WorkerFunction.Arn

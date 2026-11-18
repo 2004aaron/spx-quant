@@ -30,7 +30,7 @@ the encrypted logs, does its job and commits the logs back.
 | 10:30 slot | 10:30 | `scan --slot 10:30`; the alert is emailed (Gmail SMTP) and the send recorded |
 | 13:25 slot | 13:25 | `scan --slot 13:25` and its email, then decisions from email replies, then `mark` at the closing quotes |
 | weekly report | Fridays after the close | `report`, emailed |
-| Monday outlook | Mondays, about 05:30 | `digest monday --book paper --send` |
+| Monday outlook | Mondays, about 05:30 | `digest monday --book paper --send`; skipped once Temporal sends it (below) |
 
 GitHub starts scheduled runs late, by hours on some days, so an outside cron starts the two
 slot runs on time through `workflow_dispatch`. The GitHub crons stay as late backups: a run
@@ -49,7 +49,8 @@ every proposal at full size until the first daily mark that flags the profit tar
 settles. The pilot gets the paper book for now. `--send` writes a `digest_monday` event with
 the date, so a second run that day sends nothing; a send that fails three times is a
 `delivery_failed` event in the weekly report. The GitHub cron that starts it can be hours
-late; a Temporal schedule replaces it later (issue #63, item 8).
+late, so a Temporal Schedule takes it over once the Temporal account is connected (see
+"Temporal: the digest emails on a schedule" below).
 
 ```bash
 python -m spx_quant digest monday --book paper                 # print today's outlook
@@ -171,6 +172,52 @@ OIDC (a short-lived token GitHub issues per run) and the `stormglass-deploy` rol
 creates that role once; it can only touch StormGlass resources. The same workflow's `invite` action adds a
 user. Tests: `pip install -r cloud/requirements-dev.txt`, then `python -m unittest tests.test_cloud`
 (the API tests skip when moto is missing).
+
+## Temporal: the digest emails on a schedule (added 2026-11-17)
+
+Temporal is a service that runs a function, called a workflow, and records each step, so a crash or a
+timeout resumes from the last finished step instead of starting over. Steps that touch the outside world
+are activities, and Temporal retries them. It replaces the GitHub cron for the Monday outlook, which
+GitHub can start hours late. Built and tested; not connected to a Temporal account yet.
+
+- `cloud/worker/workflows.py`: `DigestWorkflow(kind, date)`. A Temporal Schedule (a timer Temporal keeps,
+  in a named time zone) starts it with the kind only. That run works out the market date and starts a child
+  run with the id `digest-<kind>-<date>`. Temporal refuses a second run under an id that already finished,
+  so a date sends once, whether the schedule or a person started it. A date that failed can be started again.
+- `cloud/worker/activities.py`: `list_users` reads the settings table and keeps the users whose Monday (or
+  Friday) switch is on, with the book each chose on the site. `send_digest` downloads the user's plain log
+  copy from the bucket (`logs/<email>.sql`), loads it into a temporary SQLite file with `logdoc.py`, builds
+  the email with `spx_quant.digest` (the same code as the command line) and sends it over the Gmail account
+  the alerts use. Each send gets three tries, 30 and 60 seconds apart. No log copy yet means nothing is
+  sent for that user. One user's failure does not hold back the others; the run is marked failed at the end.
+- `cloud/worker/worker.py`: the worker, the process that runs workflow and activity code. It is a Lambda
+  function (`stormglass-worker`) that Temporal Cloud invokes when a task is waiting, so nothing runs between
+  emails. This is Temporal's Serverless Workers feature, in public preview, through `run_worker` in the
+  Temporal Python SDK. The API key is read from SSM Parameter Store, not from the function's environment.
+  The function can scan the users table, read `logs/` in the bucket and read the two mail parameters and
+  the key. It cannot write anywhere.
+- `cloud/schedules.py`: creates or updates the schedules, Mondays 06:00 and Fridays 17:00
+  America/Los_Angeles, one per digest the engine builds (`digest.KINDS`). `--show` prints the plan.
+- Temporal's records hold the workflow inputs, so user email addresses are stored in Temporal Cloud. No
+  account numbers, settings or log rows leave AWS.
+
+Going live, in order (the full guide with cost and teardown is item 10 of issue #63):
+
+1. In Temporal Cloud: create a namespace in an AWS region and an API key.
+2. In the runner repo: variables `TEMPORAL_ADDRESS` (host:port) and `TEMPORAL_NAMESPACE`, secret
+   `TEMPORAL_API_KEY`. Run `site.yml` with `deploy`. With all three set it stores the key in SSM, builds the
+   worker with `sam build` and adds the function to the stack; the output `WorkerFunctionArn` is new.
+3. In Temporal Cloud: let Temporal invoke the function (its "Launch Stack" button creates an IAM role from
+   Temporal's own template; give it `WorkerFunctionArn`), then create a Worker Deployment Version with
+   deployment name `stormglass` and build id `1` pointing at the function and set it current.
+4. Run `site.yml` with `schedules`.
+
+From step 2 on, `run.sh` sees `TEMPORAL_ADDRESS` and skips its own Monday outlook, so nobody gets two; do
+steps 2 to 4 in one sitting. Without the variables, deploys and scans behave as before.
+
+Tests: `python -m unittest tests.test_temporal` (skipped without the packages in
+`cloud/requirements-dev.txt`). The workflow runs on the SDK's time-skipping test server, the activities
+against moto's stand-in for AWS. The CI job `cloud` runs these, `test_cloud` and `cfn-lint` on every push.
 
 ## Repeat policy: short "no change" messages (decided 2026-09-28)
 

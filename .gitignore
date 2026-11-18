@@ -12,4 +12,6 @@ data/cache/
 recordings/
 .cache/
 cloud/app/spx_quant/
+cloud/worker/spx_quant/
+cloud/worker/logdoc.py
 cloud/.aws-sam/
