@@ -88,6 +88,7 @@ grading table in [`docs/okrs.md`](docs/okrs.md).
 | Monday outlook email (issue #63) | open positions on Monday morning: the 10 closest to expiry and the 10 with the largest stated worst case, for the book you took or the paper book | `digest.py` |
 | US-13 remaining buying power (stretch) | sizes against buying power left after open positions | `sizing.py` |
 | Settings site (issue #63) | email-code sign-in, a profile API and a settings page on AWS; the scan runner reads the saved profile and copies its logs to a private bucket; built and tested, not deployed yet | `cloud/`, `deploy/cloud/siteprofile.py` |
+| Temporal digest schedule (issue #63) | the Monday and Friday emails as a Temporal workflow on a Lambda worker, started on time by Temporal Schedules, one send per user per date; built and tested, not connected yet | `cloud/worker/`, `cloud/schedules.py` |
 | Beta and RC KR scripts | B-KR1 to B-KR3 with their grading bands, RC-KR1 to RC-KR3, S-KR1 | `kr.py` |
 
 ## Run it
@@ -143,6 +144,7 @@ spx_quant/
   alert.py         alert id and plain-text output                 US-03 to US-06, QR-6
   htmlmail.py      HTML body of each email (card layout)          US-07
   cloud/           settings site on AWS: email-code sign-in, profile API and page (docs/operations.md)
+  cloud/worker/    Temporal worker on Lambda: digest workflow and activities (docs/operations.md)
   digest.py        Monday outlook email of open positions         issue #63
   store.py         append-only SQLite scan log                    A-KR1, A-KR2
   pipeline.py      scan -> log

@@ -1,3 +1,4 @@
 boto3
-moto[dynamodb]
+moto[dynamodb,s3]
 cfn-lint
+temporalio>=1.36,<2
