@@ -173,7 +173,7 @@ Resources:
                 Action: s3:PutObject
                 Resource: !Sub ${LogBucket.Arn}/logs/*
 
-  # Temporal Cloud invokes this function when a digest task is waiting. It takes a role created
+  # Temporal Cloud invokes this function when a workflow or activity task is waiting. It takes a role created
   # from Temporal's own template (docs/operations.md), not anything in this stack.
   WorkerFunction:
     Type: AWS::Serverless::Function

@@ -216,8 +216,53 @@ From step 2 on, `run.sh` sees `TEMPORAL_ADDRESS` and skips its own Monday outloo
 steps 2 to 4 in one sitting. Without the variables, deploys and scans behave as before.
 
 Tests: `python -m unittest tests.test_temporal` (skipped without the packages in
-`cloud/requirements-dev.txt`). The workflow runs on the SDK's time-skipping test server, the activities
+`cloud/requirements-dev.txt`). The workflows run on the SDK's time-skipping test server, the activities
 against moto's stand-in for AWS. The CI job `cloud` runs these, `test_cloud` and `cfn-lint` on every push.
+
+## Temporal: one workflow per proposal (added 2026-11-18)
+
+`ProposalWorkflow` in `cloud/worker/workflows.py` follows one proposal from the scan that logged it until
+the position is over. Its id is `proposal-<user>-<alert id>`, where the user is the email the alerts go to,
+or `auto` for the autonomous account. The log stays the record; the workflow adds two things: one email when
+a position you took reaches the profit target, and a place to look up where any proposal stands.
+
+- It learns what happened through signals. A signal is a message a client sends to a running workflow.
+  `decision` carries a reply the runner recorded (accepted, modified with the lots taken, declined, closed).
+  `marked` carries a daily mark (date, P/L, whether the profit target is flagged, whether it settled).
+- It waits for a decision until expiration at most. A declined proposal ends its run. A proposal nobody
+  answered ends as `not_taken` at the settlement mark, or 4 days after expiration if that mark never comes.
+- Once taken, it follows the marks. The first time a mark flags the profit target it runs the activity
+  `send_target`, which builds the email with `spx_quant.digest.target` from the log copy in the bucket and
+  sends it over the Gmail account the alerts use. One email per position. Replying CLOSED to it records the
+  close, the same as replying to the proposal. A mark more than a day old sends nothing, so connecting
+  Temporal to a log with long-open positions does not mail old news. A send that fails (5 tries over 15
+  minutes) is tried again at the next flagged mark and never ends the run. The site's alerts switch turns
+  the email off. The autonomous account has no inbox and gets none.
+- It ends on CLOSED or on the settlement mark and returns the P/L of the lots held at the last mark.
+- `status` is a query, a read of the run's state that changes nothing: status (`proposed`, `taken`,
+  `declined`, `not_taken`, `closed`, `settled`, `unsettled`), lots, P/L, the date of the last mark and what
+  happened to the email. In the Temporal Cloud page for the run, or
+  `temporal workflow query --workflow-id proposal-<user>-<alert id> --type status`.
+
+The runner feeds it. `deploy/cloud/lifecycle.py DB USER` runs at the end of every scan and mark run, after
+the log copy is in the bucket, and only when the runner repo has the variable `TEMPORAL_ADDRESS`. For each
+proposal still in play (not settled, or settled, declined or closed within the last 3 days; a NO CHANGE
+repeat only if it got a reply) it starts the run if there is none and sends the decisions and marks the run
+has not seen. Each signal carries the id of its log row. The workflow skips an id it already handled and
+publishes the last ids as its memo (a note on the run that can be read without a worker), which is how the
+next sync knows where to resume. A run with no memo yet has not been picked up by a worker, so the sync
+leaves it alone (`waiting` in its output) instead of queuing the same rows again. Nothing is written to the
+log, a sync cut short is finished by the next one, and an error prints a line and leaves the scan, the mark
+and the saved logs as they were. `--show` prints the plan and connects to nothing.
+
+What leaves AWS for Temporal Cloud with this: the user's email (in the workflow id), alert ids, expiration
+dates, lots, each decision and each mark's P/L. No account size, settings, strikes or quotes.
+
+Going live needs nothing beyond the four steps above: the scan workflow (`run.yml`) reads the same two
+variables and the secret `TEMPORAL_API_KEY`, and installs the Temporal SDK for this one step. If a worker
+without `ProposalWorkflow` was deployed before, deploy again with a new build id (variable
+`WORKER_BUILD_ID`) and register that version in Temporal Cloud. The first sync starts a run for every
+proposal in play and sends its whole history, a few hundred signals once.
 
 ## Repeat policy: short "no change" messages (decided 2026-09-28)
 

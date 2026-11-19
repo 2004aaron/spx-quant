@@ -1,4 +1,4 @@
-"""Weekly digest emails (issue #63): the Monday outlook of open positions.
+"""Digest emails (issue #63): the Monday outlook of open positions and the target-reached notice.
 
 Built only from the log and a date, like the weekly report, so the same log and date give
 the same email. A digest reads one of two books:
@@ -10,6 +10,9 @@ the same email. A digest reads one of two books:
 
 The email goes out over the profile's email channel once per date: the send writes a
 `digest_monday` event holding the date, and a second run for that date sends nothing.
+
+`target` is the one-off notice that a position in the taken book reached the profit target. The
+proposal's Temporal workflow sends it once (cloud/worker), so it writes no event here.
 """
 from __future__ import annotations
 
@@ -29,6 +32,8 @@ BOOK_NOTE = {"taken": "Your book: the proposals you accepted or modified, at the
              "paper": "Paper book: every proposal at full size, closed at the profit target or at expiration."}
 MARKS_NOTE = ("To short strike: how far the index was from the nearest short strike at the latest mark. "
               "P/L is paper P/L from the engine's closing mid marks, not money earned.")
+TARGET_NOTE = ("The profit target is the engine's only exit rule, and this is the only notice for this position. "
+               "If you close it, reply to this email with CLOSED as the first word so its buying power is released.")
 
 
 @dataclass
@@ -164,6 +169,30 @@ def monday(conn, asof: date, kind: str = "taken") -> tuple[str, str, str]:
     d = f"{asof:%a %b} {asof.day}, {asof.year}"
     html = h.page("MONDAY OUTLOOK", h.BLUE, f"digest-monday-{asof.isoformat()}", title, f"As of {d}  ·  {BOOK_NAME[kind]}", parts,
                   [BOOK_NOTE[kind], MARKS_NOTE, h.DISCLAIMER])
+    return subject, "\n".join(text) + "\n", html
+
+
+def target(conn, alert_id: str, asof: date) -> tuple[str, str, str] | None:
+    """(subject, plain text, HTML) for a taken position whose mark of `asof` flags the profit target.
+    None when the log does not show that: never taken, closed, or no flagged mark on that date."""
+    p = next((p for p in book(conn, asof, "taken") if p.alert["alert_id"] == alert_id), None)
+    if p is None or p.closed or not p.at_target or p.marked != asof.isoformat():
+        return None
+    lots, cost = f"{p.lots} lot{'s' * (p.lots != 1)}", _money(p.credit - p.pnl)
+    left = f"{p.dte} day{'s' * (p.dte != 1)} left"
+    away = f"{p.away:.1%}" if p.away is not None else "n/a"
+    title = f"{p.name} {p.strikes} at {p.pct:.0%} of credit"
+    subject = f"[StormGlass {alert_id}] TARGET REACHED: {title}, {_money(p.pnl, True)}"
+    stats = [("P/L at the mark", _money(p.pnl, True), f"{p.pct:.0%} of the {_money(p.credit)} credit"),
+             ("Cost to close", cost, "at the closing mid"),
+             ("Expires", _day(p.expires), left),
+             ("To short strike", away, "index at the mark")]
+    text = [f"STORMGLASS | TARGET REACHED | {alert_id}", f"Marked: {asof.isoformat()} (closing quotes)", "",
+            f"{p.name} {p.strikes}, {lots}, entered {_day(p.entered)}"]
+    text += _cols([[k, f"{v} ({note})"] for k, v, note in stats]) + ["", TARGET_NOTE, "", MARKS_NOTE, h.DISCLAIMER]
+    html = h.page("TARGET REACHED", h.GREEN, alert_id, title, f"{lots}  ·  entered {_day(p.entered)}  ·  marked {_day(p.marked)}",
+                  [h.tiles([(k, h.red(v), note) for k, v, note in half]) for half in (stats[:2], stats[2:])] + [h.callout(TARGET_NOTE)],
+                  [MARKS_NOTE, h.DISCLAIMER])
     return subject, "\n".join(text) + "\n", html
 
 

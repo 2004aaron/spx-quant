@@ -1,7 +1,7 @@
 """The Temporal worker as a Lambda function (Serverless Worker, public preview).
 
 A worker is the process that runs workflow and activity code for a task queue. Here nothing
-runs between emails: Temporal Cloud invokes this function when a task is waiting, the function
+runs between tasks: Temporal Cloud invokes this function when a task is waiting, the function
 connects, works until the queue is quiet or its time is nearly up, and exits.
 
 `run_worker` comes from the Temporal Python SDK (temporalio.contrib.aws.lambda_worker). It reads
@@ -19,8 +19,8 @@ from datetime import timedelta
 from temporalio.common import WorkerDeploymentVersion
 from temporalio.contrib.aws.lambda_worker import LambdaWorkerConfig, run_worker
 
-from activities import list_users, send_digest
-from workflows import DigestWorkflow
+from activities import list_users, send_digest, send_target
+from workflows import DigestWorkflow, ProposalWorkflow
 
 QUEUE = "stormglass"
 DEPLOYMENT = "stormglass"
@@ -38,7 +38,8 @@ def api_key() -> str:
 
 
 def configure(config: LambdaWorkerConfig, key=api_key) -> None:
-    config.worker_config.update(task_queue=QUEUE, workflows=[DigestWorkflow], activities=[list_users, send_digest],
+    config.worker_config.update(task_queue=QUEUE, workflows=[DigestWorkflow, ProposalWorkflow],
+                                activities=[list_users, send_digest, send_target],
                                 activity_executor=ThreadPoolExecutor(max_workers=2), graceful_shutdown_timeout=STOP)
     config.shutdown_deadline_buffer = STOP + timedelta(seconds=5)
     if not config.client_connect_config.get("api_key"):
