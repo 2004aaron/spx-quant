@@ -89,6 +89,7 @@ grading table in [`docs/okrs.md`](docs/okrs.md).
 | US-13 remaining buying power (stretch) | sizes against buying power left after open positions | `sizing.py` |
 | Settings site (issue #63) | email-code sign-in, a profile API and a settings page on AWS; the scan runner reads the saved profile and copies its logs to a private bucket; built and tested, not deployed yet | `cloud/`, `deploy/cloud/siteprofile.py` |
 | Temporal digest schedule (issue #63) | the Monday and Friday emails as a Temporal workflow on a Lambda worker, started on time by Temporal Schedules, one send per user per date; built and tested, not connected yet | `cloud/worker/`, `cloud/schedules.py` |
+| Proposal lifecycle (issue #63) | one Temporal workflow per proposal: it waits for your decision, follows the daily marks, emails you once when a position you took reaches the profit target, and ends with the P/L when you close it or it settles; the scan runner feeds it from the log; built and tested, not connected yet | `cloud/worker/workflows.py`, `deploy/cloud/lifecycle.py`, `digest.py` |
 | Beta and RC KR scripts | B-KR1 to B-KR3 with their grading bands, RC-KR1 to RC-KR3, S-KR1 | `kr.py` |
 
 ## Run it
@@ -144,8 +145,8 @@ spx_quant/
   alert.py         alert id and plain-text output                 US-03 to US-06, QR-6
   htmlmail.py      HTML body of each email (card layout)          US-07
   cloud/           settings site on AWS: email-code sign-in, profile API and page (docs/operations.md)
-  cloud/worker/    Temporal worker on Lambda: digest workflow and activities (docs/operations.md)
-  digest.py        Monday outlook email of open positions         issue #63
+  cloud/worker/    Temporal worker on Lambda: digest and proposal workflows, activities (docs/operations.md)
+  digest.py        Monday outlook email, target-reached notice    issue #63
   store.py         append-only SQLite scan log                    A-KR1, A-KR2
   pipeline.py      scan -> log
   kr.py            key-result checks, Alpha to RC                 section 6

@@ -1,4 +1,4 @@
-"""Monday outlook (issue #63): the two books, the two tables, one send per date."""
+"""Monday outlook and target notice (issue #63): the two books, the two tables, one send per date."""
 import contextlib
 import io
 import tempfile
@@ -106,6 +106,27 @@ class BookTest(unittest.TestCase):
                      pnl=817.0, pnl_pct_credit=1.0, settled=1)
         p, = digest.book(self.conn, date(2026, 11, 30))
         self.assertEqual((p.closed, p.how, p.pnl), ("2026-11-30", "expired", 817.0))
+
+
+    def test_target_notice_is_for_a_taken_position_on_the_day_its_mark_flags_the_target(self):
+        self.next_day(29, put=2.0, call=1.0)
+        self.assertIsNone(digest.target(self.conn, self.aid, D29))            # flagged, but never taken
+        decisions.record(self.conn, self.aid, "modified", pt(29, 14), contracts=2)
+        subject, text, html = digest.target(self.conn, self.aid, D29)
+        self.assertEqual(subject, f"[StormGlass {self.aid}] TARGET REACHED: strangle XSP 717P/811C at 63% of credit, +$1,034")
+        self.assertTrue(text.startswith(f"STORMGLASS | TARGET REACHED | {self.aid}\n"))   # the reply reader skips our own mail
+        for want in ("2 lots", "+$1,034 (63% of the $1,634 credit)", "$600 (at the closing mid)", "Nov 30 (62 days left)", "CLOSED"):
+            self.assertIn(want, text)
+            self.assertIn(want.split(" (")[0], html)
+        self.assertNotIn("<style", html)
+        self.assertEqual(decisions.parse_reply("Closed\n\n> " + text), ("closed", None))
+        self.assertIsNone(digest.target(self.conn, self.aid, D28))            # no flag on that date
+        self.next_day(30, put=5.0, call=3.0)
+        self.assertIsNone(digest.target(self.conn, self.aid, D30))            # back under the target
+        decisions.record(self.conn, self.aid, "closed", pt(30, 14))
+        self.assertIsNotNone(digest.target(self.conn, self.aid, D29))         # the log as of the 29th still says held
+        self.next_day(30)
+        self.assertIsNone(digest.target(self.conn, "no-such-alert", D29))
 
 
 class MondayTest(unittest.TestCase):
