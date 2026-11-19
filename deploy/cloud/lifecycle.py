@@ -8,7 +8,9 @@ proposal still in play it makes sure the run `proposal-<USER>-<alert id>` of Pro
 (cloud/worker/workflows.py) exists, then sends it the decisions and marks it has not seen yet as
 signals, oldest first. A signal is a message to a running workflow. Each one carries its log
 row id, and the workflow publishes the last ids it handled, so nothing here keeps state: a run
-that was cut short is finished by the next one, and sending a row twice counts once.
+that was cut short is finished by the next one, and sending a row twice counts once. A workflow
+no worker has picked up yet is left alone (`waiting`), so a worker that is down does not get the
+same rows queued again on every scan.
 
 In play: a proposal (a NO CHANGE repeat only if it got a reply) that has not settled, or was
 settled, declined or closed within the last RECENT days, so a missed run can still deliver the
@@ -53,10 +55,10 @@ def plan(conn, today: date) -> list[dict]:
 
 
 async def sync(client, conn, user: str, today: date) -> dict:
-    """Start what is missing and send what is new. Counts of started, signals, finished and failed."""
+    """Start what is missing and send what is new. Counts of what it did, per proposal and per signal."""
     from temporalio.client import WorkflowExecutionStatus
     from temporalio.service import RPCError, RPCStatusCode
-    n = {"started": 0, "signals": 0, "finished": 0, "failed": 0}
+    n = {"started": 0, "signals": 0, "waiting": 0, "finished": 0, "failed": 0}
     for p in plan(conn, today):
         h = client.get_workflow_handle(f"proposal-{user}-{p['alert_id']}")
         try:
@@ -66,6 +68,9 @@ async def sync(client, conn, user: str, today: date) -> dict:
                     n["finished"] += 1
                     continue
                 seen = await d.memo()
+                if not seen:   # started by an earlier sync and no worker has run it yet: its rows are already queued
+                    n["waiting"] += 1
+                    continue
             except RPCError as e:
                 if e.status != RPCStatusCode.NOT_FOUND:
                     raise

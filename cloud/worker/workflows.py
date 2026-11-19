@@ -92,6 +92,7 @@ class ProposalWorkflow:
         s = self.s
         s.update(user=user, alert_id=alert_id, expires=expires)
         deadline = clock.options_close(date.fromisoformat(expires)) + GRACE
+        workflow.upsert_memo({"decision": 0, "mark": 0})   # tells the runner a worker has picked this run up
         while s["status"] in OPEN:
             try:
                 await workflow.wait_condition(lambda: bool(self.inbox), timeout=max(deadline - workflow.now(), BACKFILL))

@@ -254,24 +254,25 @@ class LifecycleTest(unittest.IsolatedAsyncioTestCase):
 
         mark.run(self.conn, replay(MARK_TIME), PARAMS)
         decisions.record(self.conn, self.aid, "accepted", MARK_TIME + timedelta(hours=1))
+        counts = lambda **n: {"started": 0, "signals": 0, "waiting": 0, "finished": 0, "failed": 0, **n}
+        sync = lambda day: lifecycle.sync(env.client, self.conn, ME, day)
         with mock.patch.object(lifecycle, "QUEUE", f"q-{uuid.uuid4()}"):
+            self.assertEqual(await sync(self.D), counts(started=1, signals=2))
+            self.assertEqual(await sync(self.D), counts(waiting=1))     # no worker yet: the rows are queued once, not again
             async with Worker(env.client, task_queue=lifecycle.QUEUE, workflows=[ProposalWorkflow], activities=[send_target]):
-                sync = lambda day: lifecycle.sync(env.client, self.conn, ME, day)
-                self.assertEqual(await sync(self.D), {"started": 1, "signals": 2, "finished": 0, "failed": 0})
                 h = env.client.get_workflow_handle(f"proposal-{ME}-{self.aid}")
                 for _ in range(100):
                     if await (await h.describe()).memo() == {"decision": 1, "mark": 1}:
                         break
                     await asyncio.sleep(0.05)
-                self.assertEqual(await sync(self.D), {"started": 0, "signals": 0, "finished": 0, "failed": 0})
+                self.assertEqual(await sync(self.D), counts())
                 self.next_day(29, 2.0, 1.0)
                 decisions.record(self.conn, self.aid, "closed", clock.local_to_utc("PT", datetime(2026, 9, 29, 14)))
-                self.assertEqual(await sync(date(2026, 9, 29)), {"started": 0, "signals": 2, "finished": 0, "failed": 0})
+                self.assertEqual(await sync(date(2026, 9, 29)), counts(signals=2))
                 out = await h.result()
                 self.assertEqual((out["status"], out["lots"], out["pnl"], out["target_email"]), ("closed", 1, 517.0, "stale"))
-                self.assertEqual(await sync(date(2026, 9, 29)), {"started": 0, "signals": 0, "finished": 1, "failed": 0})
+                self.assertEqual(await sync(date(2026, 9, 29)), counts(finished=1))
                 self.assertEqual(sent, [])   # the recorded session is long past, so its target mark is not news
-
 
 @unittest.skipUnless(HAVE, NEED)
 class ActivityTest(unittest.TestCase):

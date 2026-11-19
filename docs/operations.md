@@ -250,9 +250,10 @@ proposal still in play (not settled, or settled, declined or closed within the l
 repeat only if it got a reply) it starts the run if there is none and sends the decisions and marks the run
 has not seen. Each signal carries the id of its log row. The workflow skips an id it already handled and
 publishes the last ids as its memo (a note on the run that can be read without a worker), which is how the
-next sync knows where to resume. Nothing is written to the log, a sync cut short is finished by the next
-one, and an error prints a line and leaves the scan, the mark and the saved logs as they were. `--show`
-prints the plan and connects to nothing.
+next sync knows where to resume. A run with no memo yet has not been picked up by a worker, so the sync
+leaves it alone (`waiting` in its output) instead of queuing the same rows again. Nothing is written to the
+log, a sync cut short is finished by the next one, and an error prints a line and leaves the scan, the mark
+and the saved logs as they were. `--show` prints the plan and connects to nothing.
 
 What leaves AWS for Temporal Cloud with this: the user's email (in the workflow id), alert ids, expiration
 dates, lots, each decision and each mark's P/L. No account size, settings, strikes or quotes.
