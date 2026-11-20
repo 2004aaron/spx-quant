@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import os
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -128,6 +129,28 @@ class ApiTest(unittest.TestCase):
 
     def test_no_token_no_profile(self):
         self.assertEqual(self.call("GET /api/profile", email=None)[0], 401)
+
+
+
+class GuideTest(unittest.TestCase):
+    """docs/operations.md tells a person which outputs and parameters to copy; a renamed one must fail here."""
+    root = Path(__file__).resolve().parents[1]
+
+    def names(self, template, section):
+        body = (self.root / "cloud" / template).read_text().split(f"\n{section}:\n")[1].split("\n\n")[0]
+        return set(re.findall(r"^  (\w+):", body, re.M))
+
+    def test_the_deploy_guide_names_what_the_templates_define(self):
+        guide = (self.root / "docs" / "operations.md").read_text().split("## Deploy guide")[1].split("\n## ")[0]
+        have = self.names("template.yaml", "Outputs") | self.names("bootstrap.yaml", "Outputs")
+        for out in ("SiteUrl", "RunnerRoleArn", "WorkerFunctionArn", "RoleArn"):
+            self.assertIn(out, have)
+            self.assertIn(f"`{out}`", guide)
+        text = (self.root / "cloud" / "template.yaml").read_text()
+        for word in ("/stormglass/smtp", "/stormglass/temporal/api_key", "FunctionName: stormglass-worker", "stormglass-logs-${AWS::AccountId}"):
+            self.assertIn(word, text)
+        for word in ("/stormglass/smtp/password", "/stormglass/temporal/api_key", "`stormglass-worker`", "stormglass-logs-<account id>"):
+            self.assertIn(word, guide)
 
 
 if __name__ == "__main__":

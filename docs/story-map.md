@@ -51,6 +51,7 @@ IDs follow the final proposal (September 27, 2026). Run everything with
 | Settings site: invite-only email-code sign-in, same validation as the CLI, email from the token only | `test_cloud` (12 tests) |
 | Runner reads the profile saved on the settings site; no row, a bad value or no AWS access leaves the run's profile alone | `test_siteprofile` (5 tests) |
 | Temporal digest workflow: one run per date, one send per user with the switch on, a failed user does not block the rest, same email as the command line | `test_temporal.WorkflowTest`, `ActivityTest`, `WiringTest` (10 tests) |
+| Deploy guide (issue #63 item 10): the stack outputs, parameter paths and resource names it tells you to copy exist in the templates | `test_cloud.GuideTest` |
 | Proposal lifecycle workflow: waits for a decision until expiration, one target email for a taken position, ends on declined, closed or settlement with the P/L of the lots held; a row sent twice counts once; the runner's sync sends only new rows | `test_temporal.ProposalTest`, `LifecycleTest` (7 tests), `test_digest.BookTest.test_target_notice_is_for_a_taken_position_on_the_day_its_mark_flags_the_target` |
 | Monday outlook email (issue #63): taken and paper books, top 10 by expiry and by stated worst case, one send per date | `test_digest` (15 tests) |
 | A-KR2 checks catch planted rows | `test_kr.AlphaKRTest.test_a_kr2_real_proposal_passes_and_every_planted_row_is_caught` |

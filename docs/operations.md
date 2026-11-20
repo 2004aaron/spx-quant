@@ -201,19 +201,9 @@ GitHub can start hours late. Built and tested; not connected to a Temporal accou
 - Temporal's records hold the workflow inputs, so user email addresses are stored in Temporal Cloud. No
   account numbers, settings or log rows leave AWS.
 
-Going live, in order (the full guide with cost and teardown is item 10 of issue #63):
-
-1. In Temporal Cloud: create a namespace in an AWS region and an API key.
-2. In the runner repo: variables `TEMPORAL_ADDRESS` (host:port) and `TEMPORAL_NAMESPACE`, secret
-   `TEMPORAL_API_KEY`. Run `site.yml` with `deploy`. With all three set it stores the key in SSM, builds the
-   worker with `sam build` and adds the function to the stack; the output `WorkerFunctionArn` is new.
-3. In Temporal Cloud: let Temporal invoke the function (its "Launch Stack" button creates an IAM role from
-   Temporal's own template; give it `WorkerFunctionArn`), then create a Worker Deployment Version with
-   deployment name `stormglass` and build id `1` pointing at the function and set it current.
-4. Run `site.yml` with `schedules`.
-
-From step 2 on, `run.sh` sees `TEMPORAL_ADDRESS` and skips its own Monday outlook, so nobody gets two; do
-steps 2 to 4 in one sitting. Without the variables, deploys and scans behave as before.
+Going live is stage 3 of the deploy guide below. Once the runner repo has the variable `TEMPORAL_ADDRESS`,
+`run.sh` skips its own Monday outlook, so nobody gets two. Without the Temporal variables, deploys and
+scans behave as before.
 
 Tests: `python -m unittest tests.test_temporal` (skipped without the packages in
 `cloud/requirements-dev.txt`). The workflows run on the SDK's time-skipping test server, the activities
@@ -258,11 +248,210 @@ and the saved logs as they were. `--show` prints the plan and connects to nothin
 What leaves AWS for Temporal Cloud with this: the user's email (in the workflow id), alert ids, expiration
 dates, lots, each decision and each mark's P/L. No account size, settings, strikes or quotes.
 
-Going live needs nothing beyond the four steps above: the scan workflow (`run.yml`) reads the same two
+Going live needs nothing beyond stage 3 of the deploy guide below: the scan workflow (`run.yml`) reads the same two
 variables and the secret `TEMPORAL_API_KEY`, and installs the Temporal SDK for this one step. If a worker
 without `ProposalWorkflow` was deployed before, deploy again with a new build id (variable
-`WORKER_BUILD_ID`) and register that version in Temporal Cloud. The first sync starts a run for every
+`WORKER_BUILD_ID`) and register that version in Temporal Cloud ("Updates" in the guide). The first sync starts a run for every
 proposal in play and sends its whole history, a few hundred signals once.
+
+## Deploy guide: AWS and Temporal (added 2026-11-19)
+
+How to put the settings site and the Temporal workflows live, what they cost, and how to remove them.
+Nothing here is deployed yet. The steps were checked on November 19, 2026 against the AWS and Temporal
+documentation, the SAM command line tool's source (1.173.0) and the Temporal command line tool (1.10.1).
+They have not been run against a real account, so expect to adjust a label or two. Temporal's Lambda
+workers (Serverless Workers) are in public preview and Temporal says the setup may change.
+
+There are three stages. Each one leaves the scans working if you stop after it, and the scans keep
+running on the runner's secrets until the stage 2 variable exists.
+
+| Stage | Result | Where the work happens |
+| --- | --- | --- |
+| 1 | the settings site is up and you can sign in | AWS console once, then the `site.yml` workflow |
+| 2 | the scans use the settings saved on the site and copy their logs to the bucket | one variable in the runner repo |
+| 3 | Temporal sends the Monday outlook and follows each proposal | Temporal Cloud, AWS console, runner repo |
+
+Everything lives in one AWS region, `us-west-2` (Oregon); `site.yml` and `run.yml` in the runner repo
+(`stormglass-ops`) name it. "Variable" and "secret" below mean the runner repo's Settings, Secrets and
+variables, Actions. A stack is a set of AWS resources that CloudFormation creates, updates and deletes
+together from one template file.
+
+### Stage 1: the settings site
+
+1. Sign in to the AWS console and switch the region to US West (Oregon).
+2. CloudFormation, Create stack, upload `cloud/bootstrap.yaml`, name it `stormglass-bootstrap`, keep the
+   default parameter, tick the box that acknowledges it creates IAM resources with custom names, and
+   create it. It makes two things: the trust that lets GitHub Actions prove which repository a run
+   belongs to (an OIDC provider), and the role `stormglass-deploy`, which only the main branch of the
+   runner repo can take. If the stack already exists from an earlier try, update it with the current
+   file instead, because the role gained a bucket permission on November 16.
+3. Copy the stack's `RoleArn` output into the variable `AWS_ROLE_ARN`.
+4. In the runner repo, Actions, "StormGlass settings site", Run workflow, action `deploy`. It stores the
+   Gmail address and app password the alerts already use in Parameter Store (encrypted, under
+   `/stormglass/smtp/`), creates the stack `stormglass-site` and prints its outputs. `SiteUrl` is the page.
+5. Run the workflow again with action `invite` and your email. Use the address in the secret
+   `STORMGLASS_EMAIL_TO`, because the scans look the settings up by that address.
+6. Open `SiteUrl`, enter the email, type the 6-digit code it sends, check the values and press Save settings.
+
+If the deploy fails on a service the account may not use: a new AWS account is on the Free plan, which
+AWS limits to "select services". The services used here are Lambda, API Gateway, Cognito, DynamoDB, S3,
+Parameter Store, IAM and CloudFormation. I could not find AWS's list of excluded services, so the first
+deploy is the test. The error names the resource that failed.
+
+### Stage 2: the scans read the site
+
+1. Copy the `RunnerRoleArn` output of `stormglass-site` into the variable `AWS_RUNNER_ROLE_ARN`.
+2. The next scan prints `settings site: using the profile saved ...` and, after the logs are saved,
+   `log copied to S3` once per user. If it prints `using the runner's secrets` instead, the line before
+   it says why (no saved row for that email, a value that fails the check, or no AWS access).
+
+To go back, delete the variable. The secrets `STORMGLASS_NET_LIQ` and `STORMGLASS_MARGIN` are the
+fallback the whole time, so keep them in step with what you save on the site.
+
+### Stage 3: Temporal
+
+Do steps 3 to 7 in one sitting. From step 3 on the runner stops sending its own Monday outlook, and
+the Temporal one starts at step 7.
+
+1. Temporal Cloud: create the account (it asks for a credit card). Namespaces, Create Namespace: any
+   lowercase name, cloud provider AWS, region `us-west-2`, retention 30 days, authentication method API
+   keys. A namespace is one isolated set of workflows. The provider must be AWS for a Lambda worker, and
+   a namespace keeps the authentication method it was created with. Retention is how long a finished run stays
+   readable, and the once-per-date rule for the digests depends on the finished run still being there.
+2. Create an API key: your profile page, API Keys, Create API key. The longest life is 2 years. The key
+   is shown once. Temporal emails a warning 30, 20 and 10 days before it expires.
+3. Runner repo: variable `TEMPORAL_ADDRESS` = `<namespace>.<account id>.tmprl.cloud:7233`, variable
+   `TEMPORAL_NAMESPACE` = `<namespace>.<account id>` (the Namespaces list shows that id, and the Connect
+   button on the namespace's page shows the address), secret `TEMPORAL_API_KEY` = the key.
+4. Run "StormGlass settings site" with `deploy`. With all three set it stores the key in Parameter Store
+   (`/stormglass/temporal/api_key`), builds the worker and adds the function `stormglass-worker` to the
+   stack. Copy the new output `WorkerFunctionArn`.
+5. Temporal Cloud, your namespace, Workers, Create Worker Deployment. The Launch Stack button on that
+   page opens CloudFormation with Temporal's own template, which creates the role Temporal takes to
+   invoke the function. Its parameters: `LambdaFunctionARNs` = `WorkerFunctionArn`, `AssumeRoleExternalId`
+   = a string you make up (5 to 45 letters and digits; Temporal must present it to take the role, so
+   another Temporal customer cannot point their account at your function), `RoleName` as offered. Create
+   the stack and copy its `RoleARN` output.
+6. Back on the Create Worker Deployment page: name `stormglass`, build id `1` (both must match what the
+   function reports: `DEPLOYMENT` in `cloud/worker/worker.py` and the variable `WORKER_BUILD_ID`,
+   default 1), compute AWS Lambda, the function's ARN, the role's ARN, the same external id. Save. The
+   documentation says a version created on this page becomes the current one. Then Workers, Deployments,
+   `stormglass`, Actions on the version, Validate Connection. The same from the command line, with the
+   three `TEMPORAL_` values in the environment:
+
+   ```bash
+   temporal worker deployment create-version --deployment-name stormglass --build-id 1 \
+     --aws-lambda-function-arn WORKER_FUNCTION_ARN --aws-lambda-assume-role-arn ROLE_ARN \
+     --aws-lambda-assume-role-external-id EXTERNAL_ID
+   temporal worker deployment set-current-version --deployment-name stormglass --build-id 1
+   ```
+7. Run "StormGlass settings site" with `schedules`. It prints `stormglass-digest-monday: created`.
+
+Checks:
+
+- The next scan ends with one lifecycle line per user, for example
+  `lifecycle: 3 started, 41 signals, 0 waiting, 0 finished, 0 failed`. The first
+  sync sends each open proposal's whole history. `waiting` counts runs that no worker has picked
+  up yet; if it stays above zero for two scans, the worker is not being invoked.
+- `temporal schedule trigger --schedule-id stormglass-digest-monday` (same three values in the
+  environment) starts the Monday outlook now. It
+  sends a real email to every user with the Monday switch on, and that date will not send again.
+- Worker output is in CloudWatch, log group `/aws/lambda/stormglass-worker`.
+
+What Temporal's troubleshooting page says about the usual failures: "Invalid connection" on Validate
+Connection means a wrong function or role ARN or an external id that does not match. "Task Queue not
+registered" means the function started and stopped before it could ask for work, so read its log (a
+missing parameter or an expired key). A deployment name or build id that differs from what the function
+reports makes Temporal invoke it over and over.
+
+Two gaps on main today. The Friday schedule is created only once `digest friday` is on main (PR #81);
+run `schedules` again then. And the runner change that sends the Friday close itself (stormglass-ops
+PR #1) needs the same `TEMPORAL_ADDRESS` guard as the Monday step before it merges, or Friday sends twice.
+
+### Updates
+
+- Site or worker code changed on main: run `deploy` again. The stack name is the same, so it updates in
+  place and users, saved settings and logs stay.
+- Workflow code changed in a way that alters the order of steps: set `WORKER_BUILD_ID` to the next
+  number, deploy, create a version with that build id (step 6) and make it current. Then delete the old
+  version (`temporal worker deployment delete-version --deployment-name stormglass --build-id 1`). Both
+  versions point at the same function, which now reports the new id, and a version whose id the function
+  does not report is the invoke-over-and-over case above. Temporal recommends one published Lambda
+  version per build id for production; this stack uses the plain function ARN, which its documentation
+  allows for development.
+- New Temporal API key: put it in the secret and run `deploy`. The function reads the key when a fresh
+  copy starts and keeps it while that copy stays warm, so leave the old key enabled for a day before
+  deleting it. An expired key stops the digests and the lifecycle sync. It does not touch the scans.
+- New Gmail app password: change the two SMTP secrets and run `deploy`.
+
+### Cost
+
+Read on November 19, 2026. Prices change, so check the Billing page in each console after the first week.
+
+AWS. The account is on the Free plan: $100 of credits at sign-up, no charges at all unless you upgrade
+to the Paid plan, and the account closes by itself 6 months after it was opened (opened November 15,
+2026, so about May 15, 2027) or when the credits run out, whichever is first. AWS then keeps the data
+for 90 days, and upgrading within that time keeps the account. Usage here is far inside the allowances
+that are free on both plans:
+
+| Service | What this uses in a month | Allowance or price |
+| --- | --- | --- |
+| Lambda | a few hundred short runs of the site functions; the worker runs for at most 5 minutes at 512 MB when Temporal has work, a few times around each scan. A high guess is 70,000 GB-seconds (memory times run time) | 1 million requests and 400,000 GB-seconds a month free, then $0.20 per million requests |
+| Cognito | 1 or 2 users who sign in | 10,000 monthly users free on the Essentials tier, the default for a new pool, with no end date |
+| Parameter Store | 3 standard parameters | no charge |
+| DynamoDB, API Gateway, S3, CloudWatch logs | a table of a few rows with point-in-time recovery, a few hundred page and API calls, two log copies of a few megabytes written about 90 times each, a few megabytes of function output | prices not looked up; at this size I expect cents a month on the Paid plan |
+
+Temporal Cloud. No monthly fee on the pay-as-you-go plan. It bills actions at $50 per million (the first
+5 million), plus 10% of usage for support, plus storage ($0.042 per GB-hour for running workflows,
+$0.00105 for finished ones). An action is a billable step: starting a workflow, each activity try, each
+signal, each timer, each query. A new account gets $150 of credits that expire after 90 days, and the
+card is not charged in that time while credits remain. My estimate for this project, not a measurement:
+each mark or reply costs 2 actions (the signal and the timer the workflow sets while it waits for the
+next one), so 30 open proposals marked on 21 trading days come to about 1,300 actions, the first sync
+adds about 1,000 once, and the two digests add about 40. That is under 5,000 actions a month, about 25
+cents. The storage is a few megabytes.
+
+Gmail and GitHub Actions cost nothing more than they do today.
+
+### Turning it off
+
+Temporal only, keeping the site:
+
+1. Delete the variables `TEMPORAL_ADDRESS` and `TEMPORAL_NAMESPACE` and the secret `TEMPORAL_API_KEY`.
+   The runner sends its own Monday outlook again and stops the lifecycle sync.
+2. Temporal Cloud: Namespaces, the namespace, Edit, Delete Namespace, type `DELETE`. This removes its
+   running workflows, schedules and task queues at once and cannot be undone. Do it in the same sitting
+   as step 1, or Monday sends twice. Then delete the API key (profile page, API Keys).
+3. CloudFormation: delete the stack that Launch Stack created (the Temporal role).
+4. The function `stormglass-worker` stays in `stormglass-site`. A deploy without the Temporal variables
+   does not remove it, because `sam deploy` reuses a stack's earlier parameter values when none are
+   passed. With the namespace and the role gone nothing can invoke it, and Lambda bills only for runs.
+   Delete `/stormglass/temporal/api_key` in Parameter Store by hand.
+
+I did not find how to close a Temporal Cloud account. With no namespace there is no usage to bill; ask
+Temporal support if the account itself should go.
+
+Everything on AWS:
+
+1. Check that the secrets `STORMGLASS_NET_LIQ` and `STORMGLASS_MARGIN` hold the settings you want, then
+   delete the variable `AWS_RUNNER_ROLE_ARN`. The scans are back on the secrets.
+2. Do the Temporal steps above if stage 3 was live.
+3. S3: empty the bucket `stormglass-logs-<account id>`. CloudFormation cannot delete a bucket with
+   objects in it. The encrypted logs in the runner repo are the record; these are copies.
+4. CloudFormation: delete `stormglass-site`. This removes the page, the user pool with its invited
+   users, the table with the saved settings, the functions, the bucket and the runner role.
+5. Parameter Store: delete `/stormglass/smtp/user` and `/stormglass/smtp/password`. The workflow wrote
+   them, so the stack does not own them, and one of them is the Gmail app password.
+6. CloudWatch, Log groups: delete the groups that start with `/aws/lambda/stormglass-`. Lambda created
+   them, they are not part of the stack, and they never expire by themselves.
+7. S3 and CloudFormation: `sam deploy` made a stack `aws-sam-cli-managed-default` with a bucket for
+   uploaded code. Empty that bucket (the console's Empty button also removes old versions), then delete
+   the stack.
+8. CloudFormation: delete `stormglass-bootstrap` last, then the variable `AWS_ROLE_ARN`. After this
+   GitHub Actions has no way into the account.
+
+On the Free plan, doing nothing also ends it: the account closes at 6 months and AWS erases it 90 days
+later.
 
 ## Repeat policy: short "no change" messages (decided 2026-09-28)
 
