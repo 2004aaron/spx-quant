@@ -86,10 +86,6 @@ Resources:
       AdminCreateUserConfig: {AllowAdminCreateUserOnly: true}
       AccountRecoverySetting:
         RecoveryMechanisms: [{Name: admin_only, Priority: 1}]
-      # A signed-in user cannot swap their email for someone else's: a new email only takes effect once
-      # verified, and the site's client cannot write it at all (UserPoolClient.WriteAttributes).
-      UserAttributeUpdateSettings:
-        AttributesRequireVerificationBeforeUpdate: [email]
       LambdaConfig:
         DefineAuthChallenge: !GetAtt AuthFunction.Arn
         CreateAuthChallenge: !GetAtt AuthFunction.Arn
@@ -103,7 +99,7 @@ Resources:
       GenerateSecret: false
       ExplicitAuthFlows: [ALLOW_CUSTOM_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
       ReadAttributes: [email, email_verified]
-      WriteAttributes: [locale]
+      WriteAttributes: [locale]   # never email: a user can't swap theirs for someone else's (the API also needs email_verified)
       EnableTokenRevocation: true
       PreventUserExistenceErrors: ENABLED
       AuthSessionValidity: 10
