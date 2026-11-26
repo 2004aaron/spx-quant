@@ -29,7 +29,7 @@ from pathlib import Path
 
 from . import __version__, clock, decisions, digest, kr, mark, notify, outbox, pipeline, report, store
 from . import profile as prof
-from .data import cboe
+from .data import cboe, tastytrade
 from .params import DEFAULT_PATH as PARAMS_PATH, load_params
 from .regime import advisories, classify, gate
 
@@ -37,6 +37,8 @@ from .regime import advisories, classify, gate
 def _source(a, params):
     if getattr(a, "replay", None):
         return cboe.ReplaySource(a.replay, clock.parse_utc(a.now) if a.now else None)
+    if tastytrade.available():
+        return tastytrade.TastytradeSource(params, params.feed["timeout_seconds"])
     return cboe.LiveSource(params.feed["timeout_seconds"])
 
 
@@ -86,6 +88,21 @@ def cmd_regime(a, params) -> int:
     for n in advisories(r, params):
         print(f"  note: {n}")
     return 0
+
+
+def cmd_probe(a, params) -> int:
+    """Fetch and check every configured chain plus the VIX curve; exit 1 if any check fails."""
+    src, f, bad = _source(a, params), params.feed, 0
+    print(f"source: {src.name}")
+    for t in f.get("tickers", ["_SPX"]):
+        chain, res = cboe.fetch_chain(src, t, f["stale_after_minutes"], f.get("min_rows", 1))
+        print(f"{t}: spot {chain.spot:,.2f}\n{res}" if chain else f"{t}:\n{res}")
+        bad += not res.ok
+    curve, stale = cboe.fetch_curve(src, f["stale_after_minutes"])
+    print("curve: " + "  ".join(f"{k} {v}" for k, v in curve.values.items()))
+    for n in curve.notes + stale:
+        print(f"  note: {n}")
+    return 1 if bad or stale else 0
 
 
 def cmd_scan(a, params) -> int:
@@ -264,6 +281,10 @@ def main(argv: list[str] | None = None) -> int:
     q = sub.add_parser("regime")
     replayable(q)
     q.set_defaults(fn=cmd_regime)
+
+    q = sub.add_parser("probe")
+    replayable(q)
+    q.set_defaults(fn=cmd_probe)
 
     q = sub.add_parser("scan")
     q.add_argument("--slot", help="scheduled slot in Pacific time, e.g. 10:30")
