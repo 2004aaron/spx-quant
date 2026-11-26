@@ -49,6 +49,8 @@ def leg_quotes(conn, res: ScanResult, now: datetime, source=None, params: Params
     recent = store.rows(conn, "SELECT alert_id, ticker, legs FROM alert WHERE kind='proposal' AND market_date >= ?", (since,))
     if source is not None and params is not None:
         f = params.feed
+        if hasattr(source, "want"):
+            source.want(l["sym"] for a in recent for l in a["legs"])
         for t in sorted({a["ticker"] for a in recent} - set(res.boards)):
             chain, _ = cboe.fetch_chain(source, t, f["stale_after_minutes"], f.get("min_rows", 1), now)
             if chain is not None:

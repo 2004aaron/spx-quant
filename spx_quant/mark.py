@@ -78,6 +78,8 @@ def run(conn, source, params, now: datetime | None = None) -> list[dict]:
     if now > close:
         limit = max(limit, (now - close).total_seconds() / 60 + 20)
     for ticker, alerts in by_ticker.items():
+        if hasattr(source, "want"):
+            source.want(l["sym"] for a in alerts for l in a["legs"])
         chain, probe = cboe.fetch_chain(source, ticker, limit, feed.get("min_rows", 1), now)
         if chain is None:
             store.event(conn, now, "mark_skipped", f"{ticker}: {'; '.join(probe.failures)}")
