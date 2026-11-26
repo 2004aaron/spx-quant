@@ -21,13 +21,15 @@ from datetime import date, datetime
 from .. import clock
 from ..greeks import bs, implied_vol
 from ..strategies import years_to
+from . import vixcalc
 from .cboe import OCC
 
 API = "https://api.tastyworks.com"
 UA = "stormglass/1.0"
 BATCH = 100
 BAND = (0.80, 1.12)
-ALIASES = {"VIX3M": ("VXV", "$VIX3M"), "VIX9D": ("VXST", "$VIX9D"), "VIX6M": ("VXMT", "$VIX6M")}   # older Cboe tickers   # strikes quoted, as a fraction of spot
+COMPUTED = {"VIX3M": 93, "VIX9D": 9, "VIX6M": 182}   # not quoted by tastytrade: built from SPX options, Cboe method
+WINGS = (0.30, 1.60)   # strikes priced for an index, as a fraction of spot   # strikes quoted, as a fraction of spot
 
 
 def available() -> bool:
@@ -45,6 +47,7 @@ class TastytradeSource:
         self.per_root = 2
         self.wanted: set[str] = set()
         self._token = None
+        self._chains: dict[str, list] = {}
 
     def want(self, syms) -> None:
         """Quote these option symbols too (open positions being marked)."""
@@ -151,12 +154,41 @@ class TastytradeSource:
         return {"timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
                 "data": {"current_price": spot, "last_trade_time": self._et(q["updated-at"]), "options": options}}
 
+    def nested(self, und: str) -> list:
+        if und not in self._chains:
+            self._chains[und] = self._get(f"/option-chains/{und}/nested")["data"]["items"]
+        return self._chains[und]
+
+    def computed(self, days: float) -> tuple[float, dict, dict]:
+        """A constant-maturity SPX volatility index built from live quotes: (value, details, SPX quote)."""
+        q = self._index("SPX")
+        spot, now = self._px(q), self.now()
+        listed = {(c["root-symbol"], date.fromisoformat(e["expiration-date"])): e["strikes"]
+                  for c in self.nested("SPX") for e in c["expirations"]}
+        near, far = vixcalc.bracket([{"root": r, "exp": d} for r, d in listed], now, days)
+        syms = []
+        for root, exp, _ in (near, far):
+            for s in listed[(root, exp)]:
+                k = float(s["strike-price"])
+                if WINGS[0] * spot <= k <= 1.05 * spot:
+                    syms.append(s["put"])
+                if 0.95 * spot <= k <= WINGS[1] * spot:
+                    syms.append(s["call"])
+        got = self._quotes("equity-option", syms)
+        rows = []
+        for sym in syms:
+            o, m = got.get(sym), OCC.match(sym.replace(" ", ""))
+            if o and m:
+                rows.append({"root": m["root"], "exp": date(2000 + int(m["y"]), int(m["m"]), int(m["d"])), "right": m["cp"],
+                             "strike": int(m["strike"]) / 1000.0, "bid": float(o.get("bid") or 0), "ask": float(o.get("ask") or 0)})
+        value, info = vixcalc.index(rows, now, self.rate, days)
+        return value, info, q
+
     def quote_payload(self, symbol: str) -> dict:
-        names = (symbol, *ALIASES.get(symbol, ()))
-        got = self._quotes("index", list(names))
-        q = next((got[n] for n in names if n in got and self._px(got[n])), None)
-        if not q:
-            raise LookupError(f"no tastytrade quote for {symbol} (tried {', '.join(names)})")
+        if symbol in COMPUTED:
+            value, _, q = self.computed(COMPUTED[symbol])
+            return {"data": {"current_price": value, "last_trade_time": self._et(q["updated-at"])}}
+        q = self._index(symbol)
         return {"data": {"current_price": self._px(q), "last_trade_time": self._et(q["updated-at"])}}
 
     def history_text(self) -> str:

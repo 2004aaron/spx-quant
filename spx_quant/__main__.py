@@ -102,6 +102,20 @@ def cmd_probe(a, params) -> int:
     print("curve: " + "  ".join(f"{k} {v}" for k, v in curve.values.items()))
     for n in curve.notes + stale:
         print(f"  note: {n}")
+    if hasattr(src, "computed"):
+        from .trend import fetch_text
+        for days, name in ((30, "VIX"), (93, "VIX3M")):
+            try:
+                v, info, _ = src.computed(days)
+                print(f"check: {name} by Cboe's method from SPX options {v:.2f} ({info['near']} / {info['far']}, "
+                      f"{info['near_strikes']}+{info['far_strikes']} strikes)")
+            except Exception as e:
+                print(f"check: {name} not computed: {e}")
+            try:
+                last = fetch_text(f"https://cdn.cboe.com/api/global/us_indices/daily_prices/{name}_History.csv").strip().splitlines()[-1]
+                print(f"       Cboe's published {name}, last close: {last}")
+            except Exception as e:
+                print(f"       Cboe's published {name} not reachable: {e}")
     return 1 if bad or stale else 0
 
 
