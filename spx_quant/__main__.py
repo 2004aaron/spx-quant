@@ -107,8 +107,11 @@ def cmd_probe(a, params) -> int:
         for days, name in ((30, "VIX"), (93, "VIX3M")):
             try:
                 v, info, _ = src.computed(days)
-                print(f"check: {name} by Cboe's method from SPX options {v:.2f} ({info['near']} / {info['far']}, "
-                      f"{info['near_strikes']}+{info['far_strikes']} strikes)")
+                print(f"check: {name} by Cboe's method from SPX options {v:.2f}")
+                for t in ("near", "far"):
+                    print(f"       {t} {info[t]}: vol {info[t + '_vol']}, F {info[t + '_forward']}, K0 {info[t + '_k0']}, "
+                          f"strikes {info[t + '_lo']:g}-{info[t + '_hi']:g} ({info[t + '_strikes']} used of "
+                          f"{info[t + '_quoted']} quotes, {info[t + '_zero_bids']} zero bids)")
             except Exception as e:
                 print(f"check: {name} not computed: {e}")
             try:
