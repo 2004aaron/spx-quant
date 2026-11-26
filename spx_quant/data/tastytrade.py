@@ -10,6 +10,7 @@ stay well under the 100-symbol-per-request limit.
 """
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import urllib.error
@@ -52,7 +53,8 @@ class TastytradeSource:
         try:
             return self._call(path, query)
         except urllib.error.HTTPError as e:
-            body = e.read().decode(errors="replace")[:300]
+            raw = e.read()
+            body = (gzip.decompress(raw) if raw[:2] == b"\x1f\x8b" else raw).decode(errors="replace")[:300]
             step = "oauth token" if self._token is None else path
             raise RuntimeError(f"tastytrade {step}: HTTP {e.code} {body}") from None
 
