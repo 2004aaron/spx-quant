@@ -26,7 +26,8 @@ from .cboe import OCC
 API = "https://api.tastyworks.com"
 UA = "stormglass/1.0"
 BATCH = 100
-BAND = (0.80, 1.12)   # strikes quoted, as a fraction of spot
+BAND = (0.80, 1.12)
+ALIASES = {"VIX3M": ("VXV", "$VIX3M"), "VIX9D": ("VXST", "$VIX9D"), "VIX6M": ("VXMT", "$VIX6M")}   # older Cboe tickers   # strikes quoted, as a fraction of spot
 
 
 def available() -> bool:
@@ -151,7 +152,11 @@ class TastytradeSource:
                 "data": {"current_price": spot, "last_trade_time": self._et(q["updated-at"]), "options": options}}
 
     def quote_payload(self, symbol: str) -> dict:
-        q = self._index(symbol)
+        names = (symbol, *ALIASES.get(symbol, ()))
+        got = self._quotes("index", list(names))
+        q = next((got[n] for n in names if n in got and self._px(got[n])), None)
+        if not q:
+            raise LookupError(f"no tastytrade quote for {symbol} (tried {', '.join(names)})")
         return {"data": {"current_price": self._px(q), "last_trade_time": self._et(q["updated-at"])}}
 
     def history_text(self) -> str:

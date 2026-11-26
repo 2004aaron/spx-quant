@@ -25,8 +25,8 @@ def fake_get(path, query=None):
     kind, syms = next(iter(query.items()))
     ts = (NOW - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
     if kind == "index":
-        return {"data": {"items": [{"symbol": s, "last": "7000" if s == "SPX" else "18", "updated-at": ts}
-                                   for s in syms.split(",")]}}
+        return {"data": {"items": [{"symbol": s, "last": "7000" if s == "SPX" else "20" if s == "VXV" else "18", "updated-at": ts}
+                                   for s in syms.split(",") if s not in ("VIX3M", "$VIX3M")]}}
     items = []
     for s in syms.split(","):
         k = int(s[-8:]) / 1000
@@ -61,6 +61,7 @@ class TastytradeSourceTest(unittest.TestCase):
         curve, stale = cboe.fetch_curve(self.src, 30, NOW)
         self.assertEqual(stale, [])
         self.assertEqual(curve.values["vix"], 18.0)
+        self.assertEqual(curve.values["vix3m"], 20.0)   # found under its old ticker VXV
 
     def test_available_needs_both_secrets(self):
         with mock.patch.dict(os.environ, {"TASTYTRADE_CLIENT_SECRET": "x"}, clear=True):
