@@ -153,6 +153,48 @@ Resources:
           Type: HttpApi
           Properties: {ApiId: !Ref SiteApi, Method: GET, Path: /api/portfolio, Auth: {Authorizer: Cognito}}
 
+  # Digest emails on AWS alone (no Temporal): EventBridge Scheduler starts this function. The runner
+  # stops sending its own Monday outlook once the runner repo variable STORMGLASS_AWS_DIGESTS is true.
+  DigestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: stormglass-digests
+      CodeUri: sched/
+      Handler: digests.handler
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          USERS_TABLE: !Ref UsersTable
+          LOG_BUCKET: !Ref LogBucket
+          SMTP_PARAM: !Ref SmtpParam
+          STORMGLASS_SITE_URL: !Sub https://${SiteApi}.execute-api.${AWS::Region}.amazonaws.com/
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: dynamodb:Scan
+              Resource: !GetAtt UsersTable.Arn
+            - Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub ${LogBucket.Arn}/logs/*
+            - Effect: Allow
+              Action: [s3:GetObject, s3:PutObject]
+              Resource: !Sub ${LogBucket.Arn}/sent/*
+            - Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt LogBucket.Arn
+            - Effect: Allow
+              Action: ssm:GetParameters
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SmtpParam}/*
+      Events:
+        MondayOutlook:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: cron(0 6 ? * MON *)
+            ScheduleExpressionTimezone: America/Los_Angeles
+            Input: '{"kind": "monday"}'
+            RetryPolicy: {MaximumRetryAttempts: 2, MaximumEventAgeInSeconds: 43200}
+
   LogBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -247,6 +289,8 @@ Outputs:
   RunnerRoleArn:
     Description: Goes in the runner repo variable AWS_RUNNER_ROLE_ARN
     Value: !GetAtt RunnerRole.Arn
+  DigestFunctionName:
+    Value: !Ref DigestFunction
   LogBucketName:
     Value: !Ref LogBucket
   WorkerFunctionArn:
