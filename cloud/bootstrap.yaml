@@ -89,6 +89,12 @@ Resources:
                 Effect: Allow
                 Action: [lambda:*, apigateway:*, cognito-idp:*]
                 Resource: "*"
+              - Sid: Schedules
+                Effect: Allow
+                Action: scheduler:*
+                Resource:
+                  - !Sub arn:${AWS::Partition}:scheduler:*:${AWS::AccountId}:schedule/default/*
+                  - !Sub arn:${AWS::Partition}:scheduler:*:${AWS::AccountId}:schedule-group/default
               - Sid: Table
                 Effect: Allow
                 Action: dynamodb:*
