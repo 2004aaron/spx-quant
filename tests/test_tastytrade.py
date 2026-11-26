@@ -4,6 +4,9 @@ from datetime import date, datetime, timedelta, timezone
 from unittest import mock
 
 from spx_quant.data import cboe, tastytrade
+from spx_quant.data.cboe import OCC
+from spx_quant.greeks import bs
+from spx_quant.strategies import years_to
 from spx_quant.params import load_params
 
 NOW = datetime(2026, 11, 23, 18, 30, tzinfo=timezone.utc)   # Monday 10:30 PT
@@ -16,7 +19,7 @@ def occ(root, d, right, k):
 def fake_get(path, query=None):
     today = NOW.date()
     if path.startswith("/option-chains/"):
-        exps = [today + timedelta(days=n) for n in (10, 46, 59, 66, 90)]
+        exps = [today + timedelta(days=n) for n in (10, 46, 59, 66, 90, 120)]
         strikes = [{"strike-price": str(k), "call": occ("SPXW", d, "C", k), "put": occ("SPXW", d, "P", k)}
                    for d in exps for k in range(5000, 8501, 50)]
         return {"data": {"items": [{"root-symbol": "SPXW", "expirations": [
@@ -25,14 +28,14 @@ def fake_get(path, query=None):
     kind, syms = next(iter(query.items()))
     ts = (NOW - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
     if kind == "index":
-        return {"data": {"items": [{"symbol": s, "last": "7000" if s == "SPX" else "20" if s == "VXV" else "18", "updated-at": ts}
-                                   for s in syms.split(",") if s not in ("VIX3M", "$VIX3M")]}}
+        return {"data": {"items": [{"symbol": s, "last": "7000" if s == "SPX" else "18", "updated-at": ts}
+                                   for s in syms.split(",") if s in ("SPX", "VIX")]}}
     items = []
     for s in syms.split(","):
-        k = int(s[-8:]) / 1000
-        otm = max((k - 7000) if s[12] == "C" else (7000 - k), 0)
-        px = max(150 - otm * 0.12, 0.5)
-        items.append({"symbol": s, "bid": f"{px - 0.2:.2f}", "ask": f"{px + 0.2:.2f}",
+        k, m = int(s[-8:]) / 1000, OCC.match(s.replace(" ", ""))
+        t = years_to(m["root"], date(2000 + int(m["y"]), int(m["m"]), int(m["d"])), NOW)
+        px = bs(7000, k, t, 0.20, s[12], 0.04).price
+        items.append({"symbol": s, "bid": f"{max(px - 0.1, 0):.2f}", "ask": f"{px + 0.1:.2f}",
                       "open-interest": "500", "volume": "50", "updated-at": ts})
     return {"data": {"items": items}}
 
@@ -61,7 +64,7 @@ class TastytradeSourceTest(unittest.TestCase):
         curve, stale = cboe.fetch_curve(self.src, 30, NOW)
         self.assertEqual(stale, [])
         self.assertEqual(curve.values["vix"], 18.0)
-        self.assertEqual(curve.values["vix3m"], 20.0)   # found under its old ticker VXV
+        self.assertAlmostEqual(curve.values["vix3m"], 20.0, delta=0.6)   # built from the 90/120-day options at a flat 20% vol
 
     def test_available_needs_both_secrets(self):
         with mock.patch.dict(os.environ, {"TASTYTRADE_CLIENT_SECRET": "x"}, clear=True):
