@@ -3,55 +3,92 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>StormGlass · Account settings</title>
-<style>
-  :root { --navy:#13203a; --ink:#1f2328; --muted:#59636e; --line:#d8dee4; --shade:#f6f8fa; --page:#eef1f5; --amber:#d08a52; --red:#b42318; --green:#1a7f37; }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--page); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; color:var(--ink); }
-  header { background:var(--navy); color:#fff; padding:14px 24px; display:flex; align-items:center; min-height:58px; }
-  header b { letter-spacing:3px; font-size:13px; }
-  header button { margin-left:auto; background:none; border:1px solid #fff6; color:#fff; padding:4px 12px; border-radius:6px; cursor:pointer; font:inherit; font-size:13px; }
-  main { max-width:640px; margin:28px auto; background:#fff; border:1px solid var(--line); padding:28px; }
-  h1 { font-size:22px; margin:0 0 4px; }
-  .sub { color:var(--muted); margin:0 0 20px; }
-  label { display:block; font-weight:600; margin:16px 0 4px; }
+<meta name="referrer" content="no-referrer">
+<title>StormGlass</title>
+<style nonce="__NONCE__">
+  :root { --navy:#13203a; --navy2:#1d2f52; --ink:#1f2328; --muted:#5b6573; --line:#e1e6ec; --shade:#f6f8fa; --page:#eef1f5;
+          --amber:#d08a52; --red:#c4321f; --green:#1a7f37; --blue:#2f6fde; --r:12px; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--page); color:var(--ink); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; }
+  header { background:linear-gradient(135deg,var(--navy),var(--navy2)); color:#fff; }
+  .bar { max-width:1080px; margin:0 auto; padding:16px 24px; display:flex; align-items:center; gap:24px; }
+  .logo { letter-spacing:4px; font-size:13px; font-weight:700; }
+  nav { display:flex; gap:4px; }
+  nav button { background:none; border:0; color:#ffffffb0; font:inherit; font-size:14px; padding:6px 14px; border-radius:20px; cursor:pointer; }
+  nav button.on { background:#ffffff1f; color:#fff; }
+  .me { margin-left:auto; display:flex; align-items:center; gap:12px; font-size:13px; color:#ffffffc0; }
+  .me button { background:none; border:1px solid #ffffff55; color:#fff; padding:5px 12px; border-radius:6px; cursor:pointer; font:inherit; font-size:13px; }
+  main { max-width:1080px; margin:0 auto; padding:28px 24px 8px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:var(--r); padding:26px; box-shadow:0 1px 2px #0000000a; }
+  .narrow { max-width:440px; margin:48px auto; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.8px; color:var(--muted); margin:28px 0 10px; }
+  .sub { color:var(--muted); margin:0 0 18px; }
+  label { display:block; font-weight:600; font-size:14px; margin:16px 0 6px; }
   .hint { font-weight:400; color:var(--muted); font-size:13px; }
-  input[type=email], input[type=text], input[type=number], select { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:6px; font:inherit; background:#fff; }
-  input:focus, select:focus { outline:2px solid var(--amber); border-color:var(--amber); }
+  input[type=email], input[type=text], input[type=number], select { width:100%; padding:11px 12px; border:1px solid #cfd6de; border-radius:8px; font:inherit; background:#fff; }
+  input:focus, select:focus { outline:3px solid #d08a5233; border-color:var(--amber); }
   .row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-  .btn { margin-top:22px; background:var(--navy); color:#fff; border:0; padding:11px 20px; border-radius:6px; font:inherit; font-weight:600; cursor:pointer; }
+  .btn { margin-top:22px; background:var(--navy); color:#fff; border:0; padding:12px 22px; border-radius:8px; font:inherit; font-weight:600; cursor:pointer; }
   .btn:disabled { opacity:.5; cursor:default; }
   .link { background:none; border:0; color:var(--muted); text-decoration:underline; cursor:pointer; font:inherit; margin-left:12px; }
-  .msg { margin-top:16px; padding:10px 14px; border-radius:6px; display:none; }
+  .msg { margin-top:16px; padding:10px 14px; border-radius:8px; display:none; }
   .msg.err { display:block; background:#fdecea; color:var(--red); }
   .msg.ok { display:block; background:#e8f5ec; color:var(--green); }
-  .tiles { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:18px 0 4px; }
-  .tile { background:var(--shade); border:1px solid var(--line); padding:10px 12px; }
-  .tile .l { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; }
-  .tile .v { font-size:18px; font-weight:700; }
-  .section { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; margin:26px 0 0; padding-top:18px; border-top:1px solid var(--line); }
+  .code { letter-spacing:10px; font-size:24px; text-align:center; }
+  .tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  .tile { background:#fff; border:1px solid var(--line); border-radius:var(--r); padding:16px 18px; }
+  .tile .l { font-size:12px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; }
+  .tile .v { font-size:26px; font-weight:700; margin-top:4px; }
+  .tile .n { font-size:13px; color:var(--muted); }
+  .meter { height:6px; background:var(--shade); border-radius:3px; margin-top:8px; overflow:hidden; }
+  .meter i { display:block; height:100%; background:var(--blue); }
+  .pos { color:var(--green); } .neg { color:var(--red); }
+  .head { display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
+  .head .sub { margin:0; }
+  .seg { margin-left:auto; display:flex; background:#fff; border:1px solid var(--line); border-radius:8px; padding:3px; }
+  .seg button { border:0; background:none; font:inherit; font-size:13px; padding:6px 12px; border-radius:6px; cursor:pointer; color:var(--muted); }
+  .seg button.on { background:var(--navy); color:#fff; }
+  .tablewrap { background:#fff; border:1px solid var(--line); border-radius:var(--r); overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); padding:12px 14px; border-bottom:1px solid var(--line); background:var(--shade); white-space:nowrap; }
+  td { padding:12px 14px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  tr:last-child td { border-bottom:0; }
+  td.r, th.r { text-align:right; font-variant-numeric:tabular-nums; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; background:var(--shade); color:var(--muted); }
+  .tag.hit { background:#e8f5ec; color:var(--green); }
+  .name { font-weight:600; text-transform:capitalize; }
+  .small { font-size:12px; color:var(--muted); }
+  .empty { padding:28px; text-align:center; color:var(--muted); }
   .switch { display:flex; align-items:center; gap:10px; margin:12px 0 0; font-weight:400; }
   .switch input { width:18px; height:18px; accent-color:var(--navy); }
-  .code { letter-spacing:8px; font-size:22px; text-align:center; }
+  .stiles { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:6px 0 4px; }
+  .stiles .tile { background:var(--shade); padding:12px 14px; } .stiles .v { font-size:18px; }
   [hidden] { display:none !important; }
-  footer { max-width:640px; margin:0 auto 32px; color:var(--muted); font-size:12px; padding:0 4px; }
-  @media (max-width:560px) { main { margin:0; border:0; padding:20px; } .row, .tiles { grid-template-columns:1fr; } }
+  footer { max-width:1080px; margin:0 auto 32px; padding:12px 24px; color:var(--muted); font-size:12px; }
+  @media (max-width:760px) { .tiles { grid-template-columns:1fr 1fr; } .row, .stiles { grid-template-columns:1fr; } .bar { flex-wrap:wrap; gap:12px; } .me span { display:none; } }
 </style>
 </head>
 <body>
-<header><b>STORMGLASS</b><button id="signout" hidden>Sign out</button></header>
+<header><div class="bar">
+  <div class="logo">STORMGLASS</div>
+  <nav id="nav" hidden><button id="tab-portfolio" class="on">Portfolio</button><button id="tab-settings">Settings</button></nav>
+  <div class="me" id="me" hidden><span id="who"></span><button id="signout">Sign out</button></div>
+</div></header>
+
 <main>
-  <section id="step-email">
+  <section id="step-email" class="card narrow">
     <h1>Sign in</h1>
     <p class="sub">We email you a 6-digit code. No password. Invited accounts only.</p>
     <form id="f-email">
       <label for="email">Email</label>
-      <input id="email" type="email" autocomplete="email" required>
+      <input id="email" type="email" autocomplete="email" maxlength="254" required>
       <button class="btn" type="submit">Email me a code</button>
     </form>
+    <div class="msg" id="msg-email" role="status"></div>
   </section>
 
-  <section id="step-code" hidden>
+  <section id="step-code" class="card narrow" hidden>
     <h1>Check your email</h1>
     <p class="sub">Enter the code we sent to <b id="sent-to"></b>. It works for 10 minutes.</p>
     <form id="f-code">
@@ -59,12 +96,38 @@
       <input id="code" class="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required>
       <button class="btn" type="submit">Sign in</button><button class="link" type="button" id="restart">Use a different email</button>
     </form>
+    <div class="msg" id="msg-code" role="status"></div>
   </section>
 
-  <section id="step-form" hidden>
+  <section id="view-portfolio" hidden>
+    <div class="head">
+      <div><h1>Portfolio</h1><p class="sub" id="asof">Loading…</p></div>
+      <div class="seg"><button id="book-paper" class="on">Every proposal</button><button id="book-taken">Trades I took</button></div>
+    </div>
+    <div id="pf-empty" class="card empty" hidden></div>
+    <div id="pf-body" hidden>
+      <div class="tiles">
+        <div class="tile"><div class="l">Open P/L</div><div class="v" id="k-open"></div><div class="n" id="k-open-n"></div></div>
+        <div class="tile"><div class="l">Realized P/L</div><div class="v" id="k-real"></div><div class="n" id="k-real-n"></div></div>
+        <div class="tile"><div class="l">Buying power used</div><div class="v" id="k-bp"></div><div class="n" id="k-bp-n"></div><div class="meter"><i id="k-bp-bar"></i></div></div>
+        <div class="tile"><div class="l">Stress loss, open book</div><div class="v" id="k-wc"></div><div class="n">sum of each trade's worst case</div></div>
+      </div>
+      <h2>Open positions</h2>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Position</th><th>Strikes</th><th class="r">Lots</th><th>Expires</th><th class="r">Credit</th><th class="r">P/L</th><th class="r">Of credit</th><th class="r">To short strike</th><th class="r">Buying power</th><th></th></tr></thead>
+        <tbody id="t-open"></tbody></table></div>
+      <h2>Closed</h2>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Position</th><th>Strikes</th><th class="r">Lots</th><th>Entered</th><th>Closed</th><th class="r">Credit</th><th class="r">P/L</th><th>How</th></tr></thead>
+        <tbody id="t-closed"></tbody></table></div>
+      <p class="small">P/L is paper P/L from closing mid marks, not money earned. StormGlass proposes trades; it never places orders.</p>
+    </div>
+  </section>
+
+  <section id="view-settings" class="card" hidden>
     <h1>Account settings</h1>
-    <p class="sub">How StormGlass sizes proposals for your account. Signed in as <b id="who"></b>.</p>
-    <div class="tiles">
+    <p class="sub">How StormGlass sizes proposals for your account.</p>
+    <div class="stiles">
       <div class="tile"><div class="l">Tier</div><div class="v" id="t-tier">n/a</div></div>
       <div class="tile"><div class="l">Max buying power per trade</div><div class="v" id="t-bp">n/a</div></div>
       <div class="tile"><div class="l">Max stress loss per trade</div><div class="v" id="t-wc">n/a</div></div>
@@ -72,7 +135,7 @@
     <form id="f-profile">
       <div class="row">
         <div><label for="net_liq">Net liquidation <span class="hint">($, account value)</span></label>
-          <input id="net_liq" type="number" min="1" step="1000" required></div>
+          <input id="net_liq" type="number" min="1" max="10000000000" step="1000" required></div>
         <div><label for="margin_type">Margin type</label>
           <select id="margin_type"><option value="reg_t">Reg-T</option><option value="portfolio">Portfolio margin ($100K+)</option></select></div>
       </div>
@@ -83,9 +146,8 @@
           <input id="max_worst_case_pct" type="number" min="0.1" max="100" step="0.1" required></div>
       </div>
       <label for="delta_theta_limit">Delta:theta limit, 1:N <span class="hint">(blank = tier default: <span id="dt-default">2</span>)</span></label>
-      <input id="delta_theta_limit" type="number" min="0.1" step="0.1">
-
-      <div class="section">Emails</div>
+      <input id="delta_theta_limit" type="number" min="0.1" max="1000" step="0.1">
+      <h2>Emails</h2>
       <label class="switch"><input type="checkbox" id="alerts"> Scan alerts (10:30 and 1:25 PT)</label>
       <label class="switch"><input type="checkbox" id="monday_email"> Monday outlook</label>
       <label class="switch"><input type="checkbox" id="friday_email"> Friday close summary</label>
@@ -93,34 +155,52 @@
       <select id="digest_book"><option value="paper">Every proposal (paper book)</option><option value="taken">Only trades I took</option></select>
       <button class="btn" type="submit" id="save">Save settings</button>
     </form>
+    <div class="msg" id="msg-form" role="status"></div>
   </section>
-  <div class="msg" id="msg" role="status"></div>
 </main>
-<footer>Settings only. StormGlass proposes trades; it never places orders.</footer>
-<script>
+<footer>StormGlass proposes trades; it never places orders. Model estimates, not investment advice.</footer>
+
+<script nonce="__NONCE__">
+"use strict";
 const CLIENT_ID = "__CLIENT_ID__", REGION = "__REGION__";
 const $ = id => document.getElementById(id);
-let session = null, user = "", idToken = null;
+let session = null, user = "", idToken = null, profile = null, book = "paper";
 
-function show(step) { for (const s of ["email", "code", "form"]) $("step-" + s).hidden = s !== step; $("signout").hidden = step !== "form"; }
-function say(text, ok) { const m = $("msg"); m.textContent = text || ""; m.className = "msg" + (text ? (ok ? " ok" : " err") : ""); }
-function usd(v) { return isFinite(v) && v > 0 ? "$" + Math.round(v).toLocaleString() : "n/a"; }
+function show(step) {
+  for (const s of ["step-email", "step-code", "view-portfolio", "view-settings"]) $(s).hidden = s !== step;
+  const inside = step.startsWith("view-");
+  $("nav").hidden = $("me").hidden = !inside;
+  $("tab-portfolio").classList.toggle("on", step === "view-portfolio");
+  $("tab-settings").classList.toggle("on", step === "view-settings");
+}
+function say(where, text, ok) { const m = $("msg-" + where); m.textContent = text || ""; m.className = "msg" + (text ? (ok ? " ok" : " err") : ""); }
+function usd(v, signed) {
+  if (v === null || v === undefined || !isFinite(v)) return "n/a";
+  const s = "$" + Math.abs(Math.round(v)).toLocaleString();
+  return v < 0 ? "-" + s : (signed && v > 0 ? "+" + s : s);
+}
+function pct(v) { return v === null || v === undefined || !isFinite(v) ? "n/a" : (v * 100).toFixed(0) + "%"; }
+function day(iso) { if (!iso) return ""; const d = new Date(iso + "T12:00:00"); return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "2-digit" }); }
+function money(el, v) { el.textContent = usd(v, true); el.className = el.className.replace(/ ?(pos|neg)/g, "") + (v > 0 ? " pos" : v < 0 ? " neg" : ""); }
+function cell(tr, text, cls) { const td = document.createElement("td"); td.textContent = text; if (cls) td.className = cls; tr.appendChild(td); return td; }
 
 async function cognito(target, body) {
   const r = await fetch(`https://cognito-idp.${REGION}.amazonaws.com/`, { method: "POST",
     headers: { "Content-Type": "application/x-amz-json-1.1", "X-Amz-Target": "AWSCognitoIdentityProviderService." + target },
     body: JSON.stringify(body) });
   const j = await r.json();
-  if (!r.ok) throw new Error(j.__type && j.__type.includes("NotAuthorized") ? "That didn't work. Check the code, or ask Aaron for an invite." : (j.message || "Sign-in failed"));
+  if (!r.ok) throw new Error(j.__type && j.__type.includes("NotAuthorized") ? "That didn't work. Check the code, or ask Aaron for an invite." : "Sign-in failed. Try again in a minute.");
   return j;
 }
-async function api(method, body) {
-  const r = await fetch("/api/profile", { method, headers: { Authorization: "Bearer " + idToken, "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined });
+async function api(method, path, body) {
+  const r = await fetch(path, { method, headers: { Authorization: "Bearer " + idToken, "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined, credentials: "omit" });
+  if (r.status === 401) { signout(); throw new Error("Your session ended. Sign in again."); }
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || "Request failed");
   return j;
 }
+
 function preview() {
   const nl = parseFloat($("net_liq").value), large = nl >= 1e6;
   $("t-tier").textContent = !(nl > 0) ? "n/a" : large ? "Large" : nl >= 1e5 ? "Standard" : "Starter";
@@ -129,6 +209,7 @@ function preview() {
   $("t-wc").textContent = usd(nl * parseFloat($("max_worst_case_pct").value) / 100);
 }
 function fill(p) {
+  profile = p;
   $("who").textContent = p.email;
   $("net_liq").value = p.net_liq ?? "";
   $("margin_type").value = p.margin_type;
@@ -140,38 +221,88 @@ function fill(p) {
   preview();
 }
 
+function render(pf) {
+  const empty = !pf.ready || (!pf.open.length && !pf.closed.length);
+  $("pf-empty").hidden = !empty; $("pf-body").hidden = empty;
+  if (!pf.ready) { $("asof").textContent = ""; $("pf-empty").textContent = pf.note; return; }
+  $("asof").textContent = pf.marked ? "Marked at the close on " + day(pf.marked) : "No marks yet";
+  if (empty) { $("pf-empty").textContent = pf.book === "taken" ? "No trades taken yet. Accept a proposal from its email and it shows up here." : "No proposals yet."; return; }
+  const t = pf.totals;
+  money($("k-open"), t.pnl_open); $("k-open-n").textContent = `${t.open} open · ${usd(t.credit_open)} credit`;
+  money($("k-real"), t.pnl_closed); $("k-real-n").textContent = t.closed ? `${t.wins} of ${t.closed} closed for a gain` : "nothing closed yet";
+  $("k-bp").textContent = usd(t.bp_used);
+  $("k-bp-n").textContent = t.bp_pct === null ? "set net liq in Settings" : `${pct(t.bp_pct)} of ${usd(t.net_liq)} net liq`;
+  $("k-bp-bar").style.width = Math.min(100, (t.bp_pct || 0) * 100) + "%";
+  $("k-wc").textContent = usd(t.worst_open); $("k-wc").className = "v" + (t.worst_open < 0 ? " neg" : "");
+  const open = $("t-open"); open.replaceChildren();
+  for (const p of pf.open) {
+    const tr = document.createElement("tr");
+    cell(tr, p.name, "name"); cell(tr, p.strikes); cell(tr, p.lots, "r");
+    cell(tr, `${day(p.expires)} (${p.dte}d)`); cell(tr, usd(p.credit), "r");
+    cell(tr, usd(p.pnl, true), "r " + (p.pnl > 0 ? "pos" : p.pnl < 0 ? "neg" : "")); cell(tr, pct(p.pct), "r");
+    cell(tr, pct(p.away), "r"); cell(tr, usd(p.bp), "r");
+    const tag = cell(tr, ""); if (p.at_target) { const s = document.createElement("span"); s.className = "tag hit"; s.textContent = "at target"; tag.appendChild(s); }
+    open.appendChild(tr);
+  }
+  if (!pf.open.length) { const tr = document.createElement("tr"); cell(tr, "No open positions.", "empty").colSpan = 10; open.appendChild(tr); }
+  const closed = $("t-closed"); closed.replaceChildren();
+  for (const p of pf.closed) {
+    const tr = document.createElement("tr");
+    cell(tr, p.name, "name"); cell(tr, p.strikes); cell(tr, p.lots, "r"); cell(tr, day(p.entered)); cell(tr, day(p.closed));
+    cell(tr, usd(p.credit), "r"); cell(tr, usd(p.pnl, true), "r " + (p.pnl > 0 ? "pos" : p.pnl < 0 ? "neg" : ""));
+    const s = document.createElement("span"); s.className = "tag"; s.textContent = (p.how || "").replace(/_/g, " "); cell(tr, "").appendChild(s);
+    closed.appendChild(tr);
+  }
+  if (!pf.closed.length) { const tr = document.createElement("tr"); cell(tr, "Nothing closed yet.", "empty").colSpan = 8; closed.appendChild(tr); }
+}
+async function loadPortfolio() {
+  $("asof").textContent = "Loading…";
+  for (const b of ["paper", "taken"]) $("book-" + b).classList.toggle("on", b === book);
+  try { render(await api("GET", "/api/portfolio?book=" + book)); }
+  catch (err) { $("pf-body").hidden = true; $("pf-empty").hidden = false; $("pf-empty").textContent = err.message; $("asof").textContent = ""; }
+}
+function signout() { idToken = null; session = null; profile = null; say("email", ""); show("step-email"); }
+
 $("f-email").onsubmit = async e => {
-  e.preventDefault(); say("");
+  e.preventDefault(); say("email", "");
   user = $("email").value.trim().toLowerCase();
   try {
     const r = await cognito("InitiateAuth", { AuthFlow: "CUSTOM_AUTH", ClientId: CLIENT_ID, AuthParameters: { USERNAME: user } });
-    session = r.Session; $("sent-to").textContent = user; $("code").value = ""; show("code"); $("code").focus();
-  } catch (err) { say(err.message); }
+    session = r.Session; $("sent-to").textContent = user; $("code").value = ""; say("code", ""); show("step-code"); $("code").focus();
+  } catch (err) { say("email", err.message); }
 };
 $("f-code").onsubmit = async e => {
-  e.preventDefault(); say("");
+  e.preventDefault(); say("code", "");
   try {
     const r = await cognito("RespondToAuthChallenge", { ChallengeName: "CUSTOM_CHALLENGE", ClientId: CLIENT_ID, Session: session,
       ChallengeResponses: { USERNAME: user, ANSWER: $("code").value.trim() } });
-    if (r.AuthenticationResult) { idToken = r.AuthenticationResult.IdToken; fill(await api("GET")); show("form"); }
-    else { session = r.Session; say("Wrong code. Try again."); }
-  } catch (err) { say(err.message); show("email"); }
+    if (r.AuthenticationResult) {
+      idToken = r.AuthenticationResult.IdToken;
+      fill(await api("GET", "/api/profile"));
+      book = profile.digest_book || "paper";
+      show(profile.saved ? "view-portfolio" : "view-settings");
+      if (profile.saved) loadPortfolio(); else say("form", "Welcome. Set your account values to get started.", true);
+    } else { session = r.Session; say("code", "Wrong code. Try again."); }
+  } catch (err) { show("step-email"); say("email", err.message); }
 };
 $("f-profile").onsubmit = async e => {
-  e.preventDefault(); say(""); $("save").disabled = true;
+  e.preventDefault(); say("form", ""); $("save").disabled = true;
   const dt = $("delta_theta_limit").value;
   try {
-    fill(await api("PUT", { net_liq: parseFloat($("net_liq").value), margin_type: $("margin_type").value,
+    fill(await api("PUT", "/api/profile", { net_liq: parseFloat($("net_liq").value), margin_type: $("margin_type").value,
       bp_cap_pct: parseFloat($("bp_cap_pct").value) / 100, max_worst_case_pct: parseFloat($("max_worst_case_pct").value) / 100,
       delta_theta_limit: dt === "" ? null : parseFloat(dt), digest_book: $("digest_book").value,
       alerts: $("alerts").checked, monday_email: $("monday_email").checked, friday_email: $("friday_email").checked }));
-    say("Saved.", true);
-  } catch (err) { say(err.message); }
+    say("form", "Saved.", true);
+  } catch (err) { say("form", err.message); }
   $("save").disabled = false;
 };
 for (const id of ["net_liq", "bp_cap_pct", "max_worst_case_pct"]) $(id).oninput = preview;
-$("restart").onclick = () => { say(""); show("email"); };
-$("signout").onclick = () => { idToken = null; session = null; say(""); show("email"); };
+$("restart").onclick = () => { say("email", ""); show("step-email"); };
+$("signout").onclick = signout;
+$("tab-portfolio").onclick = () => { show("view-portfolio"); loadPortfolio(); };
+$("tab-settings").onclick = () => { say("form", ""); show("view-settings"); };
+for (const b of ["paper", "taken"]) $("book-" + b).onclick = () => { book = b; loadPortfolio(); };
 </script>
 </body>
 </html>

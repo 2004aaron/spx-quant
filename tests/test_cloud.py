@@ -92,9 +92,10 @@ class ApiTest(unittest.TestCase):
         self.aws.stop()
         self.env.stop()
 
-    def call(self, route, body=None, email="Me@Example.com"):
-        e = {"routeKey": route, "body": json.dumps(body) if body is not None else None,
-             "requestContext": {"authorizer": {"jwt": {"claims": {"email": email}}}} if email else {}}
+    def call(self, route, body=None, email="Me@Example.com", verified="true", query=None, raw=None, **claims):
+        e = {"routeKey": route, "body": raw if raw is not None else (json.dumps(body) if body is not None else None),
+             "queryStringParameters": query,
+             "requestContext": {"authorizer": {"jwt": {"claims": {"email": email, "email_verified": verified, **claims}}}} if email else {}}
         r = self.api.handler(e, None)
         return r["statusCode"], (json.loads(r["body"]) if r["headers"]["Content-Type"] == "application/json" else r["body"])
 
@@ -122,13 +123,63 @@ class ApiTest(unittest.TestCase):
         self.assertFalse(self.call("GET /api/profile")[1]["saved"])
 
     def test_the_email_comes_from_the_token_not_the_body(self):
-        self.call("PUT /api/profile", {"net_liq": 200000, "margin_type": "reg_t", "email": "someone@else.com"})
+        self.assertEqual(self.call("PUT /api/profile", {"net_liq": 200000, "margin_type": "reg_t", "email": "someone@else.com"})[0], 400)
+        self.call("PUT /api/profile", {"net_liq": 200000, "margin_type": "reg_t"})
+        self.call("PUT /api/profile", {"net_liq": 300000, "margin_type": "reg_t"}, email="other@example.com")
         import boto3
-        keys = [i["email"]["S"] for i in boto3.client("dynamodb").scan(TableName="stormglass-users")["Items"]]
-        self.assertEqual(keys, ["me@example.com"])
+        keys = sorted(i["email"]["S"] for i in boto3.client("dynamodb").scan(TableName="stormglass-users")["Items"])
+        self.assertEqual(keys, ["me@example.com", "other@example.com"])
+        self.assertEqual(self.call("GET /api/profile")[1]["net_liq"], 200000.0)
 
     def test_no_token_no_profile(self):
         self.assertEqual(self.call("GET /api/profile", email=None)[0], 401)
+
+    def test_unverified_or_odd_identities_are_refused(self):
+        self.assertEqual(self.call("GET /api/profile", verified="false")[0], 401)
+        self.assertEqual(self.call("GET /api/profile", email="../x@example.com")[0], 401)
+        self.assertEqual(self.call("GET /api/profile", email="a@b.com/../../c")[0], 401)
+        self.assertEqual(self.call("GET /api/profile", token_use="access")[0], 401)
+
+    def test_bad_input_is_rejected_before_anything_is_saved(self):
+        ok = {"net_liq": 200000, "margin_type": "reg_t"}
+        self.assertEqual(self.call("PUT /api/profile", {**ok, "is_admin": True})[0], 400)
+        self.assertEqual(self.call("PUT /api/profile", [ok])[0], 400)
+        self.assertEqual(self.call("PUT /api/profile", {**ok, "net_liq": True})[0], 400)
+        self.assertEqual(self.call("PUT /api/profile", {**ok, "net_liq": "1e400"})[0], 400)
+        self.assertEqual(self.call("PUT /api/profile", raw="{" + " " * 5000 + "}")[0], 413)
+        self.assertEqual(self.call("PUT /api/profile", raw="not json")[0], 400)
+        self.assertFalse(self.call("GET /api/profile")[1]["saved"])
+
+    def test_page_carries_security_headers_and_a_fresh_nonce(self):
+        e = {"routeKey": "GET /"}
+        h1, h2 = self.api.handler(e, None), self.api.handler(e, None)
+        csp = h1["headers"]["Content-Security-Policy"]
+        self.assertIn("frame-ancestors 'none'", csp)
+        self.assertNotIn("unsafe-inline", csp)
+        self.assertEqual(h1["headers"]["X-Frame-Options"], "DENY")
+        nonce = re.search(r"nonce-([\w-]+)", csp)[1]
+        self.assertIn(f'<script nonce="{nonce}">', h1["body"])
+        self.assertNotEqual(nonce, re.search(r"nonce-([\w-]+)", h2["headers"]["Content-Security-Policy"])[1])
+
+    def test_portfolio_reads_only_the_signed_in_users_log(self):
+        from datetime import datetime
+        from spx_quant import clock, mark, pipeline
+        from tests.helpers import MARK_TIME, PARAMS, memdb, pm150, replay
+        conn = memdb()
+        a = pipeline.scan(conn, replay(), pm150(), PARAMS, "13:25", send=False).alert
+        mark.run(conn, replay(MARK_TIME), PARAMS)
+        asked = []
+        with mock.patch.object(self.api, "log", lambda email, tmp: asked.append(email) or conn), \
+                mock.patch("spx_quant.clock.now_utc", lambda: clock.local_to_utc("PT", datetime(2026, 9, 28, 14, 0))):
+            status, pf = self.call("GET /api/portfolio", query={"book": "paper"})
+        self.assertEqual((status, asked), (200, ["me@example.com"]))
+        self.assertEqual((pf["ready"], pf["totals"]["open"], pf["open"][0]["id"]), (True, 1, a["alert_id"]))
+        self.assertEqual(self.call("GET /api/portfolio", query={"book": "../x"})[0], 400)
+
+    def test_no_log_yet(self):
+        with mock.patch.object(self.api, "log", lambda email, tmp: None):
+            status, pf = self.call("GET /api/portfolio")
+        self.assertEqual((status, pf["ready"]), (200, False))
 
 
 
