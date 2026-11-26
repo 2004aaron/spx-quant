@@ -86,6 +86,10 @@ Resources:
       AdminCreateUserConfig: {AllowAdminCreateUserOnly: true}
       AccountRecoverySetting:
         RecoveryMechanisms: [{Name: admin_only, Priority: 1}]
+      # A signed-in user cannot swap their email for someone else's: a new email only takes effect once
+      # verified, and the site's client cannot write it at all (UserPoolClient.WriteAttributes).
+      UserAttributeUpdateSettings:
+        AttributesRequireVerificationBeforeUpdate: [email]
       LambdaConfig:
         DefineAuthChallenge: !GetAtt AuthFunction.Arn
         CreateAuthChallenge: !GetAtt AuthFunction.Arn
@@ -98,6 +102,9 @@ Resources:
       ClientName: stormglass-site
       GenerateSecret: false
       ExplicitAuthFlows: [ALLOW_CUSTOM_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      ReadAttributes: [email, email_verified]
+      WriteAttributes: [locale]
+      EnableTokenRevocation: true
       PreventUserExistenceErrors: ENABLED
       AuthSessionValidity: 10
       IdTokenValidity: 60
@@ -107,6 +114,9 @@ Resources:
   SiteApi:
     Type: AWS::Serverless::HttpApi
     Properties:
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
       Auth:
         Authorizers:
           Cognito:
@@ -119,12 +129,20 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: api.handler
+      MemorySize: 512
       Environment:
         Variables:
           USERS_TABLE: !Ref UsersTable
           CLIENT_ID: !Ref UserPoolClient
+          LOG_BUCKET: !Ref LogBucket
       Policies:
-        - DynamoDBCrudPolicy: {TableName: !Ref UsersTable}
+        - Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:PutItem]
+              Resource: !GetAtt UsersTable.Arn
+            - Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub ${LogBucket.Arn}/logs/*
       Events:
         Page:
           Type: HttpApi
@@ -135,6 +153,9 @@ Resources:
         PutProfile:
           Type: HttpApi
           Properties: {ApiId: !Ref SiteApi, Method: PUT, Path: /api/profile, Auth: {Authorizer: Cognito}}
+        GetPortfolio:
+          Type: HttpApi
+          Properties: {ApiId: !Ref SiteApi, Method: GET, Path: /api/portfolio, Auth: {Authorizer: Cognito}}
 
   LogBucket:
     Type: AWS::S3::Bucket
