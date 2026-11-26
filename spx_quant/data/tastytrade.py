@@ -29,7 +29,7 @@ UA = "stormglass/1.0"
 BATCH = 100
 BAND = (0.80, 1.12)
 COMPUTED = {"VIX3M": 93, "VIX9D": 9, "VIX6M": 182}   # not quoted by tastytrade: built from SPX options, Cboe method
-WINGS = (0.30, 1.60)   # strikes priced for an index, as a fraction of spot   # strikes quoted, as a fraction of spot
+WINGS = (0.05, 2.00)   # strikes priced for an index, as a fraction of spot   # strikes quoted, as a fraction of spot
 
 
 def available() -> bool:

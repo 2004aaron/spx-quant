@@ -19,7 +19,7 @@ def occ(root, d, right, k):
 def fake_get(path, query=None):
     today = NOW.date()
     if path.startswith("/option-chains/"):
-        exps = [today + timedelta(days=n) for n in (10, 46, 59, 66, 90, 120)]
+        exps = [today + timedelta(days=n) for n in (10, 46, 59, 66, 88, 102)]
         strikes = [{"strike-price": str(k), "call": occ("SPXW", d, "C", k), "put": occ("SPXW", d, "P", k)}
                    for d in exps for k in range(5000, 8501, 50)]
         return {"data": {"items": [{"root-symbol": "SPXW", "expirations": [
@@ -64,7 +64,7 @@ class TastytradeSourceTest(unittest.TestCase):
         curve, stale = cboe.fetch_curve(self.src, 30, NOW)
         self.assertEqual(stale, [])
         self.assertEqual(curve.values["vix"], 18.0)
-        self.assertAlmostEqual(curve.values["vix3m"], 20.0, delta=0.6)   # built from the 90/120-day options at a flat 20% vol
+        self.assertAlmostEqual(curve.values["vix3m"], 20.0, delta=0.6)   # built from the 88/102-day Friday options at a flat 20% vol
 
     def test_available_needs_both_secrets(self):
         with mock.patch.dict(os.environ, {"TASTYTRADE_CLIENT_SECRET": "x"}, clear=True):

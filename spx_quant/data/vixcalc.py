@@ -16,8 +16,9 @@ rows: dicts with root, exp (date), right (C/P), strike, bid, ask. The two expira
 from __future__ import annotations
 
 import math
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
+from .. import clock
 from ..strategies import expiry_utc
 
 MIN_YEAR = 525_600
@@ -73,9 +74,14 @@ def term(rows: list[dict], t_years: float, rate: float) -> tuple[float, dict]:
     return var, {"forward": round(fwd, 2), "k0": k0, "strikes": len(used)}
 
 
+def weekly(exp: date) -> bool:
+    """Cboe uses Friday expirations only, or the Thursday before a Friday holiday."""
+    return exp.weekday() == 4 or (exp.weekday() == 3 and not clock.trading_day(exp + timedelta(days=1)))
+
+
 def bracket(rows: list[dict], now: datetime, days: float) -> tuple[tuple, tuple]:
-    """The (root, exp) just before and just after the target, by minutes to settlement; PM-settled
-    wins when two roots share a date."""
+    """The (root, exp) just before and just after the target, by minutes to settlement, among Friday
+    expirations; on a third Friday the standard AM-settled SPX series is the one Cboe uses."""
     seen: dict[tuple, float] = {}
     for r in rows:
         key = (r["root"], r["exp"])
@@ -83,7 +89,7 @@ def bracket(rows: list[dict], now: datetime, days: float) -> tuple[tuple, tuple]
             seen[key] = _minutes(r["root"], r["exp"], now)
     by_date: dict[date, tuple] = {}
     for (root, exp), m in seen.items():
-        if m > 0 and (exp not in by_date or root != "SPX"):
+        if m > 0 and weekly(exp) and (exp not in by_date or root == "SPX"):
             by_date[exp] = (root, exp, m)
     target = days * 1440
     near = [x for x in by_date.values() if x[2] <= target]
