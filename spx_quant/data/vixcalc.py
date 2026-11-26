@@ -71,7 +71,9 @@ def term(rows: list[dict], t_years: float, rate: float) -> tuple[float, dict]:
         dk = (ks[1] - ks[0]) if i == 0 else (ks[-1] - ks[-2]) if i == len(ks) - 1 else (ks[i + 1] - ks[i - 1]) / 2
         total += dk / k ** 2 * growth * q
     var = 2 / t_years * total - (fwd / k0 - 1) ** 2 / t_years
-    return var, {"forward": round(fwd, 2), "k0": k0, "strikes": len(used)}
+    zero = sum(1 for v in by_k.values() for b, _ in v.values() if b <= 0)
+    return var, {"forward": round(fwd, 2), "k0": k0, "strikes": len(used), "lo": ks[0], "hi": ks[-1],
+                 "quoted": sum(len(v) for v in by_k.values()), "zero_bids": zero, "vol": round(100 * math.sqrt(max(var, 0)), 2)}
 
 
 def weekly(exp: date) -> bool:
