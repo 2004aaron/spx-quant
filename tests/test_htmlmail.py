@@ -101,3 +101,12 @@ class OtherKindsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SiteButtonTest(unittest.TestCase):
+    def test_button_only_with_site_url(self):
+        from unittest import mock
+        with mock.patch.dict("os.environ", {"STORMGLASS_SITE_URL": "https://x.example/"}):
+            self.assertIn('href="https://x.example/"', htmlmail.page("PROPOSAL", htmlmail.GREEN, "r", "t", "s", [], []))
+        with mock.patch.dict("os.environ", {"STORMGLASS_SITE_URL": ""}):
+            self.assertNotIn("Open StormGlass", htmlmail.page("PROPOSAL", htmlmail.GREEN, "r", "t", "s", [], []))

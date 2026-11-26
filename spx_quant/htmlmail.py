@@ -6,6 +6,7 @@ drop <style> blocks and class names, so every style is inline and layout is tabl
 """
 from __future__ import annotations
 
+import os
 import re
 from datetime import datetime
 from html import escape
@@ -106,9 +107,19 @@ def callout(text) -> Raw:
                f'font-size:13px;line-height:19px">{e(text)}</div>')
 
 
+def button(url: str, label: str = "Open StormGlass") -> Raw:
+    return Raw(f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 0 0"><tr>'
+               f'<td bgcolor="{NAVY}" style="border-radius:6px"><a href="{escape(url)}" target="_blank" '
+               f'style="display:inline-block;padding:11px 22px;font-size:14px;font-weight:600;color:#ffffff;'
+               f'text-decoration:none;border-radius:6px">{e(label)}</a></td></tr></table>')
+
+
 def page(badge: str, colour: str, ref: str, title: str, sub: str, parts: list, footer: list[str]) -> str:
     """The card every email shares: navy band, headline, body, small print."""
     foot = "".join(f'<div style="margin:0 0 3px 0">{e(x)}</div>' for x in footer)
+    site = os.environ.get("STORMGLASS_SITE_URL", "").strip()
+    if site:
+        parts = [*parts, button(site)]
     return (
         f'<!DOCTYPE html><html><body style="margin:0;padding:0;background-color:{PAGE}">'
         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{PAGE}"><tr>'
