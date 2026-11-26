@@ -193,6 +193,7 @@ Resources:
           USERS_TABLE: !Ref UsersTable
           LOG_BUCKET: !Ref LogBucket
           SMTP_PARAM: !Ref SmtpParam
+          STORMGLASS_SITE_URL: !Sub https://${SiteApi}.execute-api.${AWS::Region}.amazonaws.com/
       Policies:
         - Statement:
             - Effect: Allow
