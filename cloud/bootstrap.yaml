@@ -9,6 +9,10 @@ Parameters:
   GitHubRepo:
     Type: String
     Default: 2004aaron/stormglass-ops
+  GitHubRepoIds:
+    Type: String
+    Default: 2004aaron@49879093/stormglass-ops@1426293623
+    Description: The same repo as GitHub now names it in the token subject (owner@id/repo@id)
 
 Resources:
   GitHubOidc:
@@ -32,7 +36,9 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepo}:ref:refs/heads/main
+                token.actions.githubusercontent.com:sub:
+                  - !Sub repo:${GitHubRepo}:ref:refs/heads/main
+                  - !Sub repo:${GitHubRepoIds}:ref:refs/heads/main
       Policies:
         - PolicyName: stormglass-deploy
           PolicyDocument:
