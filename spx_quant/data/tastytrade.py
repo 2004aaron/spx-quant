@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date, datetime
@@ -48,6 +49,14 @@ class TastytradeSource:
         self.wanted |= set(syms)
 
     def _get(self, path: str, query: dict | None = None) -> dict:
+        try:
+            return self._call(path, query)
+        except urllib.error.HTTPError as e:
+            body = e.read().decode(errors="replace")[:300]
+            step = "oauth token" if self._token is None else path
+            raise RuntimeError(f"tastytrade {step}: HTTP {e.code} {body}") from None
+
+    def _call(self, path: str, query: dict | None = None) -> dict:
         if self._token is None:
             body = urllib.parse.urlencode({"grant_type": "refresh_token",
                                            "refresh_token": os.environ["TASTYTRADE_REFRESH_TOKEN"],
