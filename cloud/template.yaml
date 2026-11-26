@@ -16,6 +16,10 @@ Parameters:
     Type: String
     Default: 2004aaron/stormglass-ops
     Description: The runner repo. Only its main branch can take the runner role.
+  GitHubRepoIds:
+    Type: String
+    Default: 2004aaron@49879093/stormglass-ops@1426293623
+    Description: The same repo as GitHub now names it in the token subject (owner@id/repo@id)
   TemporalAddress:
     Type: String
     Default: ""
@@ -158,7 +162,9 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepo}:ref:refs/heads/main
+                token.actions.githubusercontent.com:sub:
+                  - !Sub repo:${GitHubRepo}:ref:refs/heads/main
+                  - !Sub repo:${GitHubRepoIds}:ref:refs/heads/main
       Policies:
         - PolicyName: stormglass-runner
           PolicyDocument:
