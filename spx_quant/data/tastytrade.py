@@ -11,8 +11,10 @@ stay well under the 100-symbol-per-request limit.
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,6 +29,8 @@ from .cboe import OCC
 API = "https://api.tastyworks.com"
 UA = "stormglass/1.0"
 BATCH = 100
+RETRIES = 5
+CACHE_SECONDS = 180
 BAND = (0.80, 1.12)
 COMPUTED = {"VIX3M": 93, "VIX9D": 9, "VIX6M": 182}   # not quoted by tastytrade: built from SPX options, Cboe method
 WINGS = (0.05, 2.00)   # strikes priced for an index, as a fraction of spot   # strikes quoted, as a fraction of spot
@@ -54,13 +58,37 @@ class TastytradeSource:
         self.wanted |= set(syms)
 
     def _get(self, path: str, query: dict | None = None) -> dict:
-        try:
-            return self._call(path, query)
-        except urllib.error.HTTPError as e:
-            raw = e.read()
-            body = (gzip.decompress(raw) if raw[:2] == b"\x1f\x8b" else raw).decode(errors="replace")[:300]
-            step = "oauth token" if self._token is None else path
-            raise RuntimeError(f"tastytrade {step}: HTTP {e.code} {body}") from None
+        """One API read. Rate limits (429) and server errors are retried with backoff, honoring
+        Retry-After. With TASTYTRADE_CACHE_DIR set, answers are shared for CACHE_SECONDS, so the second
+        user's scan in a run reuses the first's quotes instead of fetching them again."""
+        cache = os.environ.get("TASTYTRADE_CACHE_DIR")
+        key = hashlib.sha256(f"{path}?{sorted((query or {}).items())}".encode()).hexdigest()
+        hit = os.path.join(cache, key + ".json") if cache else None
+        if hit and os.path.exists(hit) and time.time() - os.path.getmtime(hit) < CACHE_SECONDS:
+            with open(hit) as f:
+                return json.load(f)
+        for attempt in range(RETRIES + 1):
+            try:
+                data = self._call(path, query)
+                break
+            except urllib.error.HTTPError as e:
+                if e.code in (429, 500, 502, 503, 504) and attempt < RETRIES:
+                    wait = e.headers.get("Retry-After") if e.headers else None
+                    time.sleep(min(float(wait) if wait and wait.isdigit() else 2 ** (attempt + 1), 30))
+                    continue
+                self._raise(e, path)
+        if hit:
+            os.makedirs(cache, exist_ok=True)
+            with open(hit + ".tmp", "w") as f:
+                json.dump(data, f)
+            os.replace(hit + ".tmp", hit)
+        return data
+
+    def _raise(self, e, path):
+        raw = e.read()
+        body = (gzip.decompress(raw) if raw[:2] == b"\x1f\x8b" else raw).decode(errors="replace")[:300]
+        step = "oauth token" if self._token is None else path
+        raise RuntimeError(f"tastytrade {step}: HTTP {e.code} {body}") from None
 
     def _call(self, path: str, query: dict | None = None) -> dict:
         if self._token is None:
