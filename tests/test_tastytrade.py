@@ -75,3 +75,28 @@ class TastytradeSourceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RetryAndCacheTest(unittest.TestCase):
+    def test_rate_limit_is_retried_and_answers_are_shared_between_processes(self):
+        import io
+        import tempfile
+        import urllib.error
+        calls = []
+
+        def call(path, query=None):
+            calls.append(path)
+            if len(calls) == 1:
+                raise urllib.error.HTTPError(path, 429, "Too Many Requests", {"Retry-After": "1"}, io.BytesIO(b""))
+            return {"data": {"items": [{"symbol": "VIX", "last": "18"}]}}
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"TASTYTRADE_CACHE_DIR": tmp}), \
+                mock.patch("spx_quant.data.tastytrade.time.sleep") as sleep:
+            first = tastytrade.TastytradeSource(load_params())
+            first._call = call
+            self.assertEqual(first._get("/market-data/by-type", {"index": "VIX"})["data"]["items"][0]["last"], "18")
+            second = tastytrade.TastytradeSource(load_params())
+            second._call = call
+            second._get("/market-data/by-type", {"index": "VIX"})
+        self.assertEqual(len(calls), 2)          # one 429, one answer; the second source read the cache
+        sleep.assert_called_once_with(1.0)
